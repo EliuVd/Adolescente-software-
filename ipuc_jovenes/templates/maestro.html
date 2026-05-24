@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}Panel Maestro — IPUC Adolescentes{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px">
+  <div>
+    <h2>Panel del Maestro</h2>
+    <p style="margin:0">Crea módulos y revisa el progreso de los jóvenes</p>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="badge-rol badge-maestro">Maestro</span>
+    <button class="btn-gold" onclick="toggleFormModulo()">+ Nuevo módulo</button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:28px">
+  <div class="stat-card">
+    <span class="stat-num">{{ modulos | length }}</span>
+    <div class="stat-lbl">Módulos activos</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ n_adolescentes }}</span>
+    <div class="stat-lbl">Jóvenes registrados</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ n_eval }}</span>
+    <div class="stat-lbl">Evaluaciones recibidas</div>
+  </div>
+</div>
+
+<!-- Formulario crear módulo -->
+<div id="form-modulo">
+  <h3 style="margin-bottom:20px">Crear nuevo módulo</h3>
+  <div class="form-group">
+    <label>Título del módulo *</label>
+    <input type="text" id="fTitulo" placeholder="Ej: Frutos del Espíritu">
+  </div>
+  <div class="form-group">
+    <label>Descripción</label>
+    <input type="text" id="fDesc" placeholder="Breve descripción del tema">
+  </div>
+  <div id="preguntas-container"></div>
+  <button type="button" class="btn-outline" onclick="agregarPregunta()" style="margin-top:12px">
+    + Agregar pregunta
+  </button>
+  <div style="margin-top:20px;display:flex;gap:10px">
+    <button type="button" class="btn-primary" onclick="guardarModulo()">Guardar módulo</button>
+    <button type="button" class="btn-outline" onclick="toggleFormModulo()">Cancelar</button>
+  </div>
+</div>
+
+<!-- Panel módulos + resultados -->
+<div class="docente-grid">
+  <div class="panel-card">
+    <h3>Módulos activos</h3>
+    {% for m in modulos %}
+    <div class="modulo-row">
+      <div>
+        <div class="mr-titulo">{{ m.titulo }}</div>
+        <div class="mr-fecha">{{ m.fecha[:10] }}</div>
+      </div>
+      <button class="btn-danger" onclick="eliminarModulo('{{ m.id }}', this)">Desactivar</button>
+    </div>
+    {% else %}
+    <p style="color:var(--muted);font-size:0.9rem">No hay módulos aún.</p>
+    {% endfor %}
+  </div>
+
+  <!-- Tabla de adolescentes -->
+  <div class="panel-card" style="position:relative">
+    <h3>Resultados de Adolescentes</h3>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:14px">
+      Haz clic en un joven para ver sus módulos e intentos.
+    </p>
+    <div id="listaAdolescentes"><p style="color:var(--muted);font-size:0.9rem">Cargando...</p></div>
+  </div>
+</div>
+
+<!-- Tabla de posiciones -->
+<div class="panel-card" style="margin-top:24px">
+  <h3 style="margin-bottom:18px">Tabla de posiciones</h3>
+  {% if ranking | length > 0 %}
+  <div style="overflow-x:auto;">
+    <table class="tabla-resultados">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Nombre</th>
+          <th>Ciudad</th>
+          <th>Módulos completados</th>
+          <th>Puntos totales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in ranking %}
+        <tr>
+          <td>
+            {% if loop.index == 1 %}
+              <span class="rank-medal gold">1</span>
+            {% elif loop.index == 2 %}
+              <span class="rank-medal silver">2</span>
+            {% elif loop.index == 3 %}
+              <span class="rank-medal bronze">3</span>
+            {% else %}
+              <span class="rank-num">{{ loop.index }}</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ u.nombre }}</strong></td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ u.ciudad or '—' }}</td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ u.modulos_hechos }}</td>
+          <td>
+            <span style="font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:1.1rem;color:var(--navy)">
+              {{ u.total_puntos }}
+            </span>
+            <span style="font-size:0.75rem;color:var(--muted)"> pts</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--muted)">Aún no hay adolescentes con evaluaciones.</p>
+  {% endif %}
+</div>
+
+<!-- Panel lateral de módulos del adolescente -->
+<div id="panel-intentos" style="
+  display:none; position:fixed; top:0; right:0; bottom:0; width:340px;
+  background:var(--card); box-shadow:-4px 0 24px rgba(0,0,0,0.15);
+  z-index:500; padding:28px 24px; overflow-y:auto;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  transform: translateX(100%); opacity:0;
+">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <h3 style="margin:0" id="intentos-titulo">Módulos</h3>
+    <button onclick="cerrarIntentos()" style="
+      background:none;border:none;cursor:pointer;
+      font-size:1.3rem;color:var(--muted);line-height:1;
+    ">×</button>
+  </div>
+  <div id="intentos-joven" style="font-size:0.85rem;color:var(--muted);margin-bottom:20px"></div>
+  <div id="intentos-lista"></div>
+</div>
+
+<style>
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.modulo-card {
+  animation: slideIn 0.25s ease forwards;
+  opacity: 0;
+}
+</style>
+<!-- Overlay -->
+<div id="panel-overlay" onclick="cerrarIntentos()" style="
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.2); z-index:499;
+"></div>
+
+<script>
+function toggleFormModulo() {
+  document.getElementById('form-modulo').classList.toggle('visible');
+}
+
+let numP = 0;
+function agregarPregunta() {
+  numP++;
+  const div = document.createElement('div');
+  div.className = 'pregunta-bloque';
+  div.innerHTML = `
+    <h4>Pregunta ${numP}</h4>
+    <div class="form-group">
+      <label>Enunciado *</label>
+      <textarea class="p-texto" placeholder="¿Cuál es...?" rows="2"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Opción A *</label><input type="text" class="p-a" placeholder="Opción A"></div>
+      <div class="form-group"><label>Opción B *</label><input type="text" class="p-b" placeholder="Opción B"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Opción C *</label><input type="text" class="p-c" placeholder="Opción C"></div>
+      <div class="form-group"><label>Opción D *</label><input type="text" class="p-d" placeholder="Opción D"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Respuesta correcta *</label>
+        <select class="p-correcta">
+          <option value="A">A</option><option value="B">B</option>
+          <option value="C">C</option><option value="D">D</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Explicación (opcional)</label>
+        <input type="text" class="p-exp" placeholder="Por qué es correcta">
+      </div>
+    </div>`;
+  document.getElementById('preguntas-container').appendChild(div);
+}
+
+async function guardarModulo() {
+  const titulo = document.getElementById('fTitulo').value.trim();
+  if (!titulo) { alert('El título es obligatorio.'); return; }
+  const preguntas = [];
+  document.querySelectorAll('.pregunta-bloque').forEach(b => {
+    const texto = b.querySelector('.p-texto').value.trim();
+    if (!texto) return;
+    preguntas.push({
+      texto,
+      opcion_a: b.querySelector('.p-a').value.trim(),
+      opcion_b: b.querySelector('.p-b').value.trim(),
+      opcion_c: b.querySelector('.p-c').value.trim(),
+      opcion_d: b.querySelector('.p-d').value.trim(),
+      correcta: b.querySelector('.p-correcta').value,
+      explicacion: b.querySelector('.p-exp').value.trim(),
+    });
+  });
+  const res = await fetch('/api/modulos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ titulo, descripcion: document.getElementById('fDesc').value.trim(), preguntas })
+  });
+  const data = await res.json();
+  if (data.ok) { alert('Módulo guardado correctamente.'); location.reload(); }
+  else alert('Error: ' + (data.error || 'Intenta de nuevo.'));
+}
+
+async function eliminarModulo(id, btn) {
+  if (!confirm('¿Desactivar este módulo?')) return;
+  const res  = await fetch('/api/modulos/' + id, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) btn.closest('.modulo-row').remove();
+}
+
+// Cargar lista de adolescentes con sus resultados
+async function cargarAdolescentes() {
+  const cont = document.getElementById('listaAdolescentes');
+  try {
+    const res  = await fetch('/api/resultados');
+    const data = await res.json();
+
+    if (!data.length) {
+      cont.innerHTML = '<p style="color:var(--muted);font-size:0.9rem">Aún no hay evaluaciones.</p>';
+      return;
+    }
+
+    // Agrupar por adolescente
+    const porAdolescente = {};
+    data.forEach(r => {
+      if (!porAdolescente[r.usuario_id]) {
+        porAdolescente[r.usuario_id] = { nombre: r.estudiante, id: r.usuario_id, modulos: [] };
+      }
+      porAdolescente[r.usuario_id].modulos.push(r);
+    });
+
+    let html = '';
+    Object.values(porAdolescente).forEach(adol => {
+      html += `
+        <div class="adol-row" onclick="verModulosAdolescente('${adol.id}', '${adol.nombre}')"
+          style="display:flex;align-items:center;justify-content:space-between;
+                 padding:12px 0;border-bottom:1px solid var(--border-lt);cursor:pointer;">
+          <div>
+            <div style="font-weight:600;color:var(--text)">${adol.nombre}</div>
+            <div style="font-size:0.78rem;color:var(--muted)">${adol.modulos.length} módulo${adol.modulos.length !== 1 ? 's' : ''} evaluado${adol.modulos.length !== 1 ? 's' : ''}</div>
+          </div>
+          <span style="color:var(--muted);font-size:0.8rem">Ver módulos →</span>
+        </div>`;
+    });
+
+    cont.innerHTML = html;
+  } catch(e) {
+    cont.innerHTML = '<p style="color:var(--muted)">Error cargando datos.</p>';
+  }
+}
+
+// Abrir panel lateral con módulos del adolescente
+async function verModulosAdolescente(usuarioId, nombre) {
+  document.getElementById('intentos-titulo').textContent = nombre;
+  document.getElementById('intentos-joven').textContent = 'Módulos evaluados';
+  document.getElementById('intentos-lista').innerHTML = '<p style="color:var(--muted)">Cargando...</p>';
+  const panel = document.getElementById('panel-intentos');
+panel.style.display = 'block';
+setTimeout(() => {
+  panel.style.transform = 'translateX(0)';
+  panel.style.opacity = '1';
+}, 10);
+  document.getElementById('panel-overlay').style.display = 'block';
+
+  try {
+    const res  = await fetch('/api/resultados');
+    const data = await res.json();
+
+    // Filtrar módulos de este adolescente
+    const modulos = data.filter(r => r.usuario_id === usuarioId);
+
+    if (!modulos.length) {
+      document.getElementById('intentos-lista').innerHTML =
+        '<p style="color:var(--muted);font-size:0.9rem">Sin módulos evaluados.</p>';
+      return;
+    }
+
+    let html = '';
+    modulos.forEach(m => {
+      const color = m.puntaje >= 80 ? 'var(--green)' : m.puntaje >= 60 ? '#D97706' : 'var(--red)';
+      html += `
+        <div class="modulo-card" style="border:1px solid var(--border-lt);border-radius:10px;margin-bottom:10px;overflow:hidden;animation-delay:${modulos.indexOf(m) * 0.08}s">
+          <div onclick="toggleIntentos('intentos-${m.modulo_id}', this)"
+            style="display:flex;align-items:center;justify-content:space-between;
+                   padding:14px 16px;cursor:pointer;background:var(--bg);">
+            <div>
+              <div style="font-weight:600;font-size:0.9rem;color:var(--text)">${m.modulo}</div>
+              <div style="font-size:0.75rem;color:var(--muted)">${m.fecha.substring(0,10)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:800;font-size:1.1rem;color:${color}">${m.puntaje}%</span>
+              <span class="toggle-arrow" style="color:var(--muted);font-size:0.8rem;transition:transform 0.2s">▼</span>
+            </div>
+          </div>
+          <div id="intentos-${m.modulo_id}" style="display:none;padding:0 16px 14px;">
+            <p style="color:var(--muted);font-size:0.8rem">Cargando intentos...</p>
+          </div>
+        </div>`;
+    });
+
+    document.getElementById('intentos-lista').innerHTML = html;
+
+    // Precargar intentos de cada módulo
+    modulos.forEach(m => cargarIntentosModulo(usuarioId, m.modulo_id));
+
+  } catch(e) {
+    document.getElementById('intentos-lista').innerHTML =
+      '<p style="color:var(--muted)">Error cargando módulos.</p>';
+  }
+}
+
+// Cargar intentos de un módulo específico
+async function cargarIntentosModulo(usuarioId, moduloId) {
+  try {
+    const res  = await fetch(`/api/intentos/${usuarioId}/${moduloId}`);
+    const data = await res.json();
+    const cont = document.getElementById(`intentos-${moduloId}`);
+    if (!cont) return;
+
+    if (!data.length) {
+      cont.innerHTML = '<p style="color:var(--muted);font-size:0.8rem">Sin intentos registrados.</p>';
+      return;
+    }
+
+    let html = '';
+    data.forEach((intento, i) => {
+      const color = intento.puntaje >= 80 ? 'var(--green)' : intento.puntaje >= 60 ? '#D97706' : 'var(--red)';
+      html += `
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:8px 0;border-bottom:1px solid var(--border-lt);">
+          <div>
+            <div style="font-size:0.82rem;font-weight:600;color:var(--text)">Intento ${data.length - i}</div>
+            <div style="font-size:0.75rem;color:var(--muted)">${intento.fecha.substring(0,16)}</div>
+          </div>
+          <span style="font-weight:800;font-size:1.1rem;color:${color}">${intento.puntaje}%</span>
+        </div>`;
+    });
+    html += `<div style="margin-top:8px;font-size:0.75rem;color:var(--muted);text-align:center">
+      ${data.length} intento${data.length !== 1 ? 's' : ''} en total
+    </div>`;
+    cont.innerHTML = html;
+  } catch(e) {}
+}
+
+// Desplegar/colapsar intentos de un módulo
+function toggleIntentos(id, header) {
+  const cont  = document.getElementById(id);
+  const arrow = header.querySelector('.toggle-arrow');
+  const abierto = cont.style.display !== 'none';
+  cont.style.display  = abierto ? 'none' : 'block';
+  arrow.style.transform = abierto ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
+function cerrarIntentos() {
+  const panel = document.getElementById('panel-intentos');
+  panel.style.transform = 'translateX(100%)';
+  panel.style.opacity = '0';
+  setTimeout(() => { panel.style.display = 'none'; }, 300);
+  document.getElementById('panel-overlay').style.display = 'none';
+}
+
+cargarAdolescentes();
+</script>
+
+{% endblock %}

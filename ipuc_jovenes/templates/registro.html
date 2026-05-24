@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Registro — IPUC Adolescentes{% endblock %}
+{% block content %}
+<div class="auth-container">
+  <div class="auth-deco-1"></div>
+  <div class="auth-deco-2"></div>
+  <div class="auth-brand">
+    <img src="/static/logo.png.webp" alt="IPUC" style="height:90px; width:auto; margin-bottom:8px;">
+    <h1 style="color:#ffffff; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">IPUC Adolescentes</h1>
+    <p>Crea tu cuenta gratuita</p>
+  </div>
+  <div class="auth-card">
+    <h2>Únete a la comunidad</h2>
+    <p class="auth-sub">Aprende, evalúate y crece en la fe</p>
+    <form action="/registro" method="POST">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nombre completo *</label>
+          <input type="text" name="nombre" placeholder="Tu nombre" required>
+        </div>
+        <div class="form-group">
+          <label>Ciudad</label>
+          <input type="text" name="ciudad" placeholder="Ej: Montería">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Correo electrónico *</label>
+        <input type="email" name="email" placeholder="tu@correo.com" required>
+      </div>
+      <div class="form-group">
+        <label>Contraseña * (mínimo 6 caracteres)</label>
+        <div style="position:relative">
+          <input type="password" name="password" id="regPass" placeholder="••••••••" required minlength="6" style="padding-right:40px">
+          <span onclick="togglePass('regPass', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:1rem;user-select:none;">👁</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select name="rol">
+          <option value="adolescente">Adolescente / Joven</option>
+          <option value="maestro">Maestro / Líder</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-primary btn-full">Crear cuenta</button>
+    </form>
+    <p class="auth-link">¿Ya tienes cuenta? <a href="/login">Iniciar sesión</a></p>
+  </div>
+</div>
+{% endblock %}

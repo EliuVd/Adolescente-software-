@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Mis resultados — IPUC Adolescentes{% endblock %}
+{% block content %}
+
+<h2 style="margin-bottom:6px">Mis resultados</h2>
+<p style="margin-bottom:24px">Tu progreso y posición en el ranking general</p>
+
+<div class="resultados-layout">
+
+  <!-- Columna izquierda: historial de módulos -->
+  <div class="resultados-izq">
+
+    <!-- Mis puntos totales -->
+    <div class="mis-puntos-card">
+      <div class="mp-num">{{ mis_puntos }}</div>
+      <div class="mp-lbl">puntos totales</div>
+    </div>
+
+    <!-- Tarjetas de resultados con scroll horizontal -->
+    <div class="section-title" style="margin-bottom:12px">Módulos completados</div>
+
+    {% if historial %}
+    <div class="historial-scroll">
+      {% for r in historial %}
+      <div class="hist-card {% if r.puntaje >= 80 %}hist-high{% elif r.puntaje >= 60 %}hist-mid{% else %}hist-low{% endif %}">
+        <div class="hist-modulo">{{ r.modulo_titulo }}</div>
+        <div class="hist-pct">{{ r.puntaje }}%</div>
+        <div class="hist-pts">
+          <span class="pts-badge">+{{ r.puntos }} pt{{ 's' if r.puntos != 1 else '' }}</span>
+        </div>
+        <div class="hist-fecha">{{ r.fecha[:10] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      Aún no has hecho ninguna evaluación. <a href="/" style="color:var(--navy);font-weight:600">Comienza ahora</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Columna derecha: tabla de posiciones -->
+  <div class="resultados-der">
+    <div class="panel-card" style="height:100%">
+      <h3 style="margin-bottom:18px">Tabla de posiciones</h3>
+      {% if tabla %}
+      <div class="ranking-list">
+        {% for u in tabla %}
+        <div class="ranking-row {% if u.nombre == usuario.nombre %}ranking-yo{% endif %}">
+          <div class="rank-pos">
+            {% if loop.index == 1 %}
+              <span class="rank-medal gold">1</span>
+            {% elif loop.index == 2 %}
+              <span class="rank-medal silver">2</span>
+            {% elif loop.index == 3 %}
+              <span class="rank-medal bronze">3</span>
+            {% else %}
+              <span class="rank-num">{{ loop.index }}</span>
+            {% endif %}
+          </div>
+          <div class="rank-info">
+            <div class="rank-nombre">{{ u.nombre }}</div>
+            <div class="rank-ciudad">{{ u.ciudad or '—' }} · {{ u.modulos_hechos }} módulo{{ 's' if u.modulos_hechos != 1 else '' }}</div>
+          </div>
+          <div class="rank-pts">{{ u.total_puntos }} <span>pts</span></div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:var(--muted);font-size:0.9rem">Aún no hay participantes en el ranking.</p>
+      {% endif %}
+
+      <!-- Leyenda de puntos -->
+      <div class="puntos-leyenda">
+        <div class="section-title" style="margin-bottom:10px">Sistema de puntos</div>
+        <div class="leyenda-row"><span class="ley-badge ley-gold">3 pts</span> Resultado 80 — 100%</div>
+        <div class="leyenda-row"><span class="ley-badge ley-blue">2 pts</span> Resultado 60 — 79%</div>
+        <div class="leyenda-row"><span class="ley-badge ley-red">1 pt</span> Resultado menor a 60%</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

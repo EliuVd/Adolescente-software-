@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Inicio — IPUC Jóvenes{% endblock %}
+{% block content %}
+
+<div class="welcome-banner" style="background: linear-gradient(135deg, #1a3a8f 0%, #2d5be3 60%, #1e4fd8 100%);">
+  <div class="wb-deco" style="opacity:0"></div><div class="wb-deco2" style="opacity:0"></div>
+  <div class="wb-content">
+    <h2>Hola, {{ usuario.nombre.split()[0] }}</h2>
+    <p>Continúa tu camino de aprendizaje en la fe</p>
+    <div class="wb-verse">
+      <span class="verse-ref">Romanos 1:16</span>
+      "No me avergüenzo del evangelio, porque es poder de Dios para salvación."
+    </div>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <span class="stat-num">{{ modulos | length }}</span>
+    <div class="stat-lbl">Módulos disponibles</div>
+  </div>
+  <div class="stat-card">
+    {% set total_intentos = progreso.values() | map(attribute='intentos') | sum %}
+    <span class="stat-num">{{ total_intentos }}</span>
+    <div class="stat-lbl">Evaluaciones hechas</div>
+  </div>
+  <div class="stat-card">
+    {% set mejores = progreso.values() | map(attribute='mejor') | list %}
+    {% set con_nota = mejores | select('gt', 0) | list %}
+    <span class="stat-num">
+      {% if con_nota %}{{ (con_nota | sum / con_nota | length) | round | int }}%{% else %}—{% endif %}
+    </span>
+    <div class="stat-lbl">Tu promedio</div>
+  </div>
+</div>
+
+<div class="section-title">Módulos de estudio</div>
+<div class="modules-grid">
+  {% for m in modulos %}
+  {% set p = progreso[m.id] %}
+  <div class="module-card" style="border-radius:16px;overflow:hidden;">
+    <div class="mc-top">
+     <span class="mc-num">{{ loop.index }}</span>
+      {% if p.intentos > 0 %}
+        <span class="mc-badge badge-done">{{ p.mejor }}%</span>
+      {% else %}
+        <span class="mc-badge badge-new">Nuevo</span>
+      {% endif %}
+    </div>
+    <h3>{{ m.titulo }}</h3>
+    <p>{{ m.descripcion }}</p>
+    {% if p.intentos > 0 %}
+    <p style="font-size:0.76rem; color: var(--muted)">{{ p.intentos }} intento{{ 's' if p.intentos > 1 else '' }}</p>
+    {% endif %}
+    <div class="mc-actions">
+      <a href="/modulo/{{ m.id }}" class="btn-gold-small" style="color:#ffffff;">Hacer evaluación</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">No hay módulos disponibles aún.</div>
+  {% endfor %}
+</div>
+
+{% endblock %}

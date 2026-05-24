@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Panel Docente — Adolescentes App{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 24px">
+  <h2>Panel del docente</h2>
+  <button class="btn-gold" onclick="toggleFormModulo()">+ Nuevo módulo</button>
+</div>
+
+<!-- Estadísticas rápidas -->
+<div class="stats-grid" style="margin-bottom: 28px">
+  <div class="stat-card">
+    <span class="stat-num">{{ modulos | length }}</span>
+    <div class="stat-lbl">Módulos creados</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ n_estudiantes }}</span>
+    <div class="stat-lbl">Estudiantes registrados</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ n_eval }}</span>
+    <div class="stat-lbl">Evaluaciones recibidas</div>
+  </div>
+</div>
+
+<!-- Formulario crear módulo -->
+<div id="form-modulo">
+  <h3 style="margin-bottom: 20px">Crear nuevo módulo</h3>
+  <div class="form-group">
+    <label>Título del módulo *</label>
+    <input type="text" id="fTitulo" placeholder="Ej: Frutos del Espíritu Santo">
+  </div>
+  <div class="form-group">
+    <label>Descripción</label>
+    <input type="text" id="fDesc" placeholder="Breve descripción del tema">
+  </div>
+
+  <div id="preguntas-container"></div>
+
+  <button type="button" class="btn-outline" onclick="agregarPregunta()" style="margin-top: 12px">
+    + Agregar pregunta
+  </button>
+
+  <div style="margin-top: 20px; display: flex; gap: 10px">
+    <button type="button" class="btn-primary" onclick="guardarModulo()">Guardar módulo</button>
+    <button type="button" class="btn-outline" onclick="toggleFormModulo()">Cancelar</button>
+  </div>
+</div>
+
+<!-- Panel principal: módulos y resultados -->
+<div class="docente-grid">
+
+  <!-- Módulos existentes -->
+  <div class="panel-card">
+    <h3>Módulos activos</h3>
+    {% if modulos %}
+    {% for m in modulos %}
+    {% if m.activo %}
+    <div class="modulo-row">
+      <div>
+        <div class="mr-titulo">{{ m.titulo }}</div>
+        <div class="mr-fecha">{{ m.fecha[:10] }}</div>
+      </div>
+      <button class="btn-danger" onclick="eliminarModulo('{{ m.id }}', this)">Desactivar</button>
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    <p style="color: var(--muted); font-size: 0.9rem">No hay módulos aún.</p>
+    {% endif %}
+  </div>
+
+  <!-- Resultados de estudiantes -->
+  <div class="panel-card">
+    <h3>Resultados recientes</h3>
+    <div id="tablaResultados">
+      <p style="color: var(--muted); font-size: 0.9rem">Cargando...</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Toggle formulario ──────────────────────────
+function toggleFormModulo() {
+  document.getElementById('form-modulo').classList.toggle('visible');
+}
+
+// ── Agregar bloque de pregunta ─────────────────
+let numP = 0;
+function agregarPregunta() {
+  numP++;
+  const cont = document.getElementById('preguntas-container');
+  const div = document.createElement('div');
+  div.className = 'pregunta-bloque';
+  div.id = 'preg-' + numP;
+  div.innerHTML = `
+    <h4>Pregunta ${numP}</h4>
+    <div class="form-group">
+      <label>Enunciado *</label>
+      <textarea class="p-texto" placeholder="¿Cuál es...?" rows="2"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Opción A *</label>
+        <input type="text" class="p-a" placeholder="Opción A">
+      </div>
+      <div class="form-group">
+        <label>Opción B *</label>
+        <input type="text" class="p-b" placeholder="Opción B">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Opción C *</label>
+        <input type="text" class="p-c" placeholder="Opción C">
+      </div>
+      <div class="form-group">
+        <label>Opción D *</label>
+        <input type="text" class="p-d" placeholder="Opción D">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Respuesta correcta *</label>
+        <select class="p-correcta">
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Explicación (opcional)</label>
+        <input type="text" class="p-exp" placeholder="¿Por qué es correcta?">
+      </div>
+    </div>`;
+  cont.appendChild(div);
+}
+
+// ── Guardar módulo ─────────────────────────────
+async function guardarModulo() {
+  const titulo = document.getElementById('fTitulo').value.trim();
+  if (!titulo) { alert('El título es obligatorio.'); return; }
+
+  const preguntas = [];
+  document.querySelectorAll('.pregunta-bloque').forEach(b => {
+    const texto = b.querySelector('.p-texto').value.trim();
+    if (!texto) return;
+    preguntas.push({
+      texto,
+      opcion_a:   b.querySelector('.p-a').value.trim(),
+      opcion_b:   b.querySelector('.p-b').value.trim(),
+      opcion_c:   b.querySelector('.p-c').value.trim(),
+      opcion_d:   b.querySelector('.p-d').value.trim(),
+      correcta:   b.querySelector('.p-correcta').value,
+      explicacion: b.querySelector('.p-exp').value.trim(),
+    });
+  });
+
+  const res = await fetch('/api/modulos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      titulo,
+      descripcion: document.getElementById('fDesc').value.trim(),
+      preguntas
+    })
+  });
+  const data = await res.json();
+  if (data.ok) {
+    alert('¡Módulo guardado! Recarga la página para verlo.');
+    location.reload();
+  } else {
+    alert('Error: ' + (data.error || 'Intenta de nuevo.'));
+  }
+}
+
+// ── Eliminar/desactivar módulo ─────────────────
+async function eliminarModulo(id, btn) {
+  if (!confirm('¿Desactivar este módulo? Los estudiantes no lo verán.')) return;
+  const res = await fetch('/api/modulos/' + id, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    btn.closest('.modulo-row').remove();
+  }
+}
+
+// ── Cargar tabla de resultados ─────────────────
+async function cargarResultados() {
+  const cont = document.getElementById('tablaResultados');
+  try {
+    const res  = await fetch('/api/resultados');
+    const data = await res.json();
+    if (!data.length) {
+      cont.innerHTML = '<p style="color: var(--muted); font-size: 0.9rem">Aún no hay evaluaciones.</p>';
+      return;
+    }
+    let html = `<table class="tabla-resultados">
+      <thead><tr>
+        <th>Estudiante</th><th>Módulo</th><th>Puntaje</th><th>Fecha</th>
+      </tr></thead><tbody>`;
+    data.slice(0, 20).forEach(r => {
+      const color = r.puntaje >= 80 ? 'var(--green)' : r.puntaje >= 60 ? '#E65100' : 'var(--red)';
+      html += `<tr>
+        <td><strong>${r.estudiante}</strong><br><span style="font-size:0.78rem;color:var(--muted)">${r.email}</span></td>
+        <td>${r.modulo}</td>
+        <td style="font-weight:700;color:${color}">${r.puntaje}%</td>
+        <td style="font-size:0.82rem;color:var(--muted)">${r.fecha.substring(0,16)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    cont.innerHTML = html;
+  } catch (e) {
+    cont.innerHTML = '<p style="color: var(--muted)">Error cargando resultados.</p>';
+  }
+}
+
+cargarResultados();
+</script>
+
+{% endblock %}

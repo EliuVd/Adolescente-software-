@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block title %}Panel Admin — IPUC Adolescentes{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px">
+  <div>
+    <h2>Panel Administrador</h2>
+    <p style="margin:0">Gestión completa de usuarios y contenido</p>
+  </div>
+  <span class="badge-rol badge-admin">Admin</span>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:28px">
+  <div class="stat-card">
+    <span class="stat-num">{{ usuarios | length }}</span>
+    <div class="stat-lbl">Usuarios totales</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ usuarios | selectattr('rol','equalto','adolescente') | list | length }}</span>
+    <div class="stat-lbl">Adolescentes</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ usuarios | selectattr('rol','equalto','maestro') | list | length }}</span>
+    <div class="stat-lbl">Maestros</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ modulos | selectattr('activo') | list | length }}</span>
+    <div class="stat-lbl">Módulos activos</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ n_eval }}</span>
+    <div class="stat-lbl">Evaluaciones</div>
+  </div>
+</div>
+
+<!-- Tabla de usuarios -->
+<div class="panel-card" style="margin-bottom:24px">
+  <h3 style="margin-bottom:18px">Gestión de usuarios</h3>
+  <div style="overflow-x:auto;">
+    <table class="tabla-resultados">
+      <thead>
+        <tr>
+          <th>Nombre</th><th>Correo</th><th>Ciudad</th><th>Rol actual</th>
+          <th>Estado</th><th>Cambiar rol</th><th>Contraseña</th><th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr>
+          <td><strong>{{ u.nombre }}</strong></td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ u.email }}</td>
+          <td style="font-size:0.82rem">{{ u.ciudad or '—' }}</td>
+          <td><span class="badge-rol badge-{{ u.rol }}">{{ u.rol | capitalize }}</span></td>
+          <td>
+            {% if u.activo %}
+              <span style="color:var(--green);font-weight:600;font-size:0.84rem">Activo</span>
+            {% else %}
+              <span style="color:var(--red);font-weight:600;font-size:0.84rem">Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.rol != 'admin' %}
+            <form action="/admin/cambiar-rol/{{ u.id }}" method="POST" style="display:flex;gap:6px">
+              <select name="rol" style="padding:4px 8px;border-radius:6px;font-size:0.82rem;border:1px solid var(--border)">
+                <option value="adolescente" {% if u.rol=='adolescente' %}selected{% endif %}>Adolescente</option>
+                <option value="maestro" {% if u.rol=='maestro' %}selected{% endif %}>Maestro</option>
+              </select>
+              <button type="submit" class="btn-primary" style="padding:4px 10px;font-size:0.8rem">Guardar</button>
+            </form>
+            {% else %}
+            <span style="font-size:0.82rem;color:var(--muted)">— Admin —</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.rol != 'admin' %}
+            <button class="btn-outline" style="padding:4px 10px;font-size:0.8rem"
+              onclick="cambiarPassword('{{ u.id }}', '{{ u.nombre }}')">Cambiar</button>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.rol != 'admin' %}
+            <form action="/admin/toggle-usuario/{{ u.id }}" method="POST">
+              <button type="submit" class="{{ 'btn-danger' if u.activo else 'btn-success' }}"
+                onclick="return confirm('¿Confirmas esta acción?')">
+                {{ 'Desactivar' if u.activo else 'Activar' }}
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Tabla de posiciones -->
+<div class="panel-card" style="margin-bottom:24px">
+  <h3 style="margin-bottom:18px">Tabla de posiciones</h3>
+  {% if ranking %}
+  <div style="overflow-x:auto;">
+    <table class="tabla-resultados">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Nombre</th>
+          <th>Ciudad</th>
+          <th>Módulos completados</th>
+          <th>Puntos totales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in ranking %}
+        <tr>
+          <td>
+            {% if loop.index == 1 %}
+              <span class="rank-medal gold">1</span>
+            {% elif loop.index == 2 %}
+              <span class="rank-medal silver">2</span>
+            {% elif loop.index == 3 %}
+              <span class="rank-medal bronze">3</span>
+            {% else %}
+              <span class="rank-num">{{ loop.index }}</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ u.nombre }}</strong></td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ u.ciudad or '—' }}</td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ u.modulos_hechos }}</td>
+          <td>
+            <span style="font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:1.1rem;color:var(--navy)">
+              {{ u.total_puntos }}
+            </span>
+            <span style="font-size:0.75rem;color:var(--muted)"> pts</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--muted)">Aún no hay adolescentes con evaluaciones.</p>
+  {% endif %}
+</div>
+
+<!-- Módulos -->
+<div class="panel-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <h3 style="margin:0">Módulos del sistema</h3>
+    <button class="btn-gold" onclick="toggleFormModulo()">+ Nuevo módulo</button>
+  </div>
+
+  <div id="form-nuevo-modulo" style="display:none;background:var(--bg);border-radius:var(--radius-sm);padding:20px;margin-bottom:20px;border:1px solid var(--border)">
+    <form action="/admin/crear-modulo" method="POST">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Título *</label>
+          <input type="text" name="titulo" placeholder="Ej: Frutos del Espíritu" required>
+        </div>
+        <div class="form-group">
+          <label>Descripción</label>
+          <input type="text" name="descripcion" placeholder="Breve descripción">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="submit" class="btn-primary">Crear módulo</button>
+        <button type="button" class="btn-outline" onclick="toggleFormModulo()">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  {% if modulos %}
+  <div style="overflow-x:auto;">
+    <table class="tabla-resultados">
+      <thead>
+        <tr><th>Título</th><th>Descripción</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr>
+      </thead>
+      <tbody>
+        {% for m in modulos %}
+        <tr>
+          <td><strong>{{ m.titulo }}</strong></td>
+          <td style="font-size:0.85rem;color:var(--muted)">{{ m.descripcion or '—' }}</td>
+          <td>
+            {% if m.activo %}
+              <span style="color:var(--green);font-weight:600;font-size:0.82rem">Activo</span>
+            {% else %}
+              <span style="color:var(--red);font-weight:600;font-size:0.82rem">Inactivo</span>
+            {% endif %}
+          </td>
+          <td style="font-size:0.82rem;color:var(--muted)">{{ m.fecha[:10] }}</td>
+          <td>
+            <form action="/admin/toggle-modulo/{{ m.id }}" method="POST">
+              <button type="submit" class="{{ 'btn-danger' if m.activo else 'btn-success' }}"
+                onclick="return confirm('¿Confirmas esta acción?')">
+                {{ 'Desactivar' if m.activo else 'Activar' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--muted)">No hay módulos aún.</p>
+  {% endif %}
+</div>
+
+<!-- Toast notificación -->
+<div id="toast-msg" style="
+  display:none; position:fixed; bottom:28px; right:28px; z-index:2000;
+  background:var(--card); border-radius:12px; padding:16px 20px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.18); align-items:center; gap:12px;
+  font-size:0.9rem; font-weight:500; min-width:260px;">
+</div>
+
+<!-- Modal cambiar contraseña -->
+<div id="modal-password" style="
+  display:none; position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,0.45); align-items:center; justify-content:center;">
+  <div style="
+    background:var(--card); border-radius:16px; padding:32px 28px;
+    width:100%; max-width:380px; box-shadow:0 8px 40px rgba(0,0,0,0.25);
+    animation: fadeUp 0.2s ease;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div style="
+        width:42px;height:42px;border-radius:50%;
+        background:var(--navy);display:flex;align-items:center;justify-content:center;">
+        <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2"
+          viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:1rem">Cambiar contraseña</h3>
+        <p style="margin:0;font-size:0.82rem;color:var(--muted)">Usuario: <strong id="modal-nombre"></strong></p>
+      </div>
+    </div>
+    <input type="hidden" id="modal-uid">
+    <div class="form-group">
+      <label>Nueva contraseña</label>
+      <input type="password" id="modal-input" placeholder="Mínimo 6 caracteres"
+        style="width:100%" onkeydown="if(event.key==='Enter') confirmarPassword()">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn-primary" style="flex:1" onclick="confirmarPassword()">Guardar</button>
+      <button class="btn-outline" style="flex:1" onclick="cerrarModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes slideToast {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+</style>
+
+<script>
+function toggleFormModulo() {
+  const f = document.getElementById('form-nuevo-modulo');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+function mostrarToast(msg, tipo) {
+  const toast = document.getElementById('toast-msg');
+  const isOk  = tipo === 'success';
+  const color  = isOk ? '#16a34a' : '#dc2626';
+  const icono  = isOk
+    ? `<svg width="20" height="20" fill="none" stroke="${color}" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>`
+    : `<svg width="20" height="20" fill="none" stroke="${color}" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`;
+  toast.style.borderLeft = `4px solid ${color}`;
+  toast.innerHTML = `${icono}<span style="color:var(--text)">${msg}</span>`;
+  toast.style.display = 'flex';
+  toast.style.animation = 'slideToast 0.3s ease';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 3500);
+}
+
+function cambiarPassword(uid, nombre) {
+  document.getElementById('modal-nombre').textContent = nombre;
+  document.getElementById('modal-uid').value = uid;
+  document.getElementById('modal-input').value = '';
+  document.getElementById('modal-password').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-input').focus(), 100);
+}
+
+function cerrarModal() {
+  document.getElementById('modal-password').style.display = 'none';
+}
+
+async function confirmarPassword() {
+  const uid   = document.getElementById('modal-uid').value;
+  const nueva = document.getElementById('modal-input').value;
+  if (!nueva || nueva.length < 6) { mostrarToast('Mínimo 6 caracteres.', 'error'); return; }
+  try {
+    const res = await fetch('/admin/cambiar-password/' + uid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: nueva })
+    });
+    const d = await res.json();
+    cerrarModal();
+    if (d.ok) mostrarToast('Contraseña actualizada correctamente.', 'success');
+    else mostrarToast('Error: ' + (d.error || 'No permitido'), 'error');
+  } catch(e) {
+    mostrarToast('Error de red.', 'error');
+  }
+}
+
+document.getElementById('modal-password').addEventListener('click', function(e) {
+  if (e.target === this) cerrarModal();
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ modulo.titulo }} — IPUC Jóvenes{% endblock %}
+{% block content %}
+
+<div class="breadcrumb"><a href="/">← Volver al inicio</a></div>
+
+<div class="quiz-page">
+  <div class="modulo-header">
+    <div>
+      <h2>{{ modulo.titulo }}</h2>
+      <p>{{ modulo.descripcion }}</p>
+    </div>
+  </div>
+
+  {% if preguntas %}
+  <form id="quizForm">
+    <input type="hidden" id="moduloId" value="{{ modulo.id }}">
+
+    {% for p in preguntas %}
+    <div class="question-card" id="card-{{ p.id }}">
+      <div class="q-header">
+        <span class="q-num">Pregunta {{ loop.index }} de {{ preguntas | length }}</span>
+      </div>
+      <p class="q-text">{{ p.texto }}</p>
+      <div class="options-list">
+        {% for letra, texto in [('A', p.opcion_a), ('B', p.opcion_b), ('C', p.opcion_c), ('D', p.opcion_d)] %}
+        <label class="option-label">
+          <input type="radio" name="resp_{{ p.id }}" value="{{ letra }}">
+          <span class="option-box">
+            <span class="option-letter">{{ letra }}</span>
+            {{ texto }}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="quiz-submit">
+      <button type="submit" class="btn-primary btn-lg">Enviar evaluación</button>
+      <p class="submit-hint">Responde todas las preguntas antes de enviar</p>
+    </div>
+  </form>
+
+  <!-- Resultado -->
+  <div id="resultado" style="display:none">
+    <div class="result-hero" id="resultHero">
+      <div class="result-score-circle">
+        <span class="rs-num" id="rsPct">0%</span>
+        <span class="rs-label">tu resultado</span>
+      </div>
+      <div class="result-meta">
+        <h2>{{ modulo.titulo }}</h2>
+        <p id="rsDetalle"></p>
+        <p class="result-msg" id="rsMsg"></p>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-bottom:12px">Revisión de respuestas</div>
+    <div class="review-list" id="reviewList"></div>
+
+    <div class="result-actions" style="margin-top:20px">
+      <a href="/modulo/{{ modulo.id }}" class="btn-outline">Repetir</a>
+      <a href="/" class="btn-primary">Volver al inicio</a>
+      <a href="/mis-resultados" class="btn-outline">Mis resultados</a>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="empty-state">Este módulo no tiene preguntas todavía. Vuelve pronto.</div>
+  {% endif %}
+
+</div>
+
+<script>
+const form = document.getElementById('quizForm');
+const moduloId = document.getElementById('moduloId').value;
+
+document.querySelectorAll('input[type="radio"]').forEach(r => {
+  r.addEventListener('change', () => {
+    r.closest('.question-card').classList.add('answered');
+  });
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const cards    = document.querySelectorAll('.question-card');
+  const answered = document.querySelectorAll('.question-card.answered');
+  if (answered.length < cards.length) {
+    alert(`Faltan ${cards.length - answered.length} pregunta(s) por responder.`);
+    return;
+  }
+
+  const respuestas = {};
+  document.querySelectorAll('input[type="radio"]:checked').forEach(r => {
+    respuestas[r.name.replace('resp_', '')] = r.value;
+  });
+
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  try {
+    const res  = await fetch('/api/respuestas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modulo_id: moduloId, respuestas })
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert('Error al enviar: ' + (data.error || 'Intenta de nuevo.'));
+      btn.disabled = false;
+      btn.textContent = 'Enviar evaluación';
+      return;
+    }
+
+    form.style.display = 'none';
+    document.getElementById('resultado').style.display = 'block';
+
+    const pct = data.puntaje;
+    document.getElementById('rsPct').textContent = pct + '%';
+    document.getElementById('rsDetalle').textContent =
+      `${data.correctas} de ${data.total} respuestas correctas`;
+
+    const msgs = [
+      [100, 'Resultado perfecto. Excelente dominio del contenido.'],
+      [80,  'Muy bien. Sigue creciendo en la Palabra.'],
+      [60,  'Buen esfuerzo. Repasa el contenido y vuelve a intentarlo.'],
+      [0,   'No te rindas — "Todo lo puedo en Cristo que me fortalece." Fil 4:13'],
+    ];
+    document.getElementById('rsMsg').textContent = msgs.find(m => pct >= m[0])[1];
+
+    const hero = document.getElementById('resultHero');
+    hero.className = 'result-hero ' + (pct >= 80 ? 'hero-gold' : pct >= 60 ? 'hero-blue' : 'hero-red');
+
+    const list = document.getElementById('reviewList');
+    data.detalle.forEach(d => {
+      const div = document.createElement('div');
+      div.className = 'review-item ' + (d.ok ? 'rev-ok' : 'rev-wrong');
+      div.innerHTML = `
+        <div class="rev-icon">${d.ok ? '✓' : '✗'}</div>
+        <div class="rev-body">
+          <p class="rev-pregunta">${d.pregunta}</p>
+          ${!d.ok ? `<p class="rev-correcta">Respuesta correcta: <strong>${d.correcta}</strong></p>` : ''}
+          ${d.explicacion ? `<p class="rev-explicacion">${d.explicacion}</p>` : ''}
+        </div>`;
+      list.appendChild(div);
+    });
+
+    document.getElementById('resultado').scrollIntoView({ behavior: 'smooth' });
+
+  } catch (err) {
+    alert('Error de conexión. Intenta de nuevo.');
+    btn.disabled = false;
+    btn.textContent = 'Enviar evaluación';
+  }
+});
+</script>
+
+{% endblock %}

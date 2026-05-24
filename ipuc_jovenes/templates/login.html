@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión — IPUC Adolescentes{% endblock %}
+{% block content %}
+<div class="auth-container">
+  <div class="auth-deco-1"></div>
+  <div class="auth-deco-2"></div>
+
+  <!-- Círculos decorativos de fondo -->
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0">
+    <div style="position:absolute;width:500px;height:500px;border-radius:50%;
+      background:rgba(255,255,255,0.04);top:-120px;left:-100px;"></div>
+    <div style="position:absolute;width:350px;height:350px;border-radius:50%;
+      background:rgba(255,255,255,0.06);bottom:-80px;right:-60px;"></div>
+    <div style="position:absolute;width:200px;height:200px;border-radius:50%;
+      background:rgba(255,255,255,0.05);top:40%;left:10%;"></div>
+    <div style="position:absolute;width:120px;height:120px;border-radius:50%;
+      background:rgba(255,215,0,0.08);top:20%;right:15%;"></div>
+    <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:0.04"
+      xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+          <path d="M 60 0 L 0 0 0 60" fill="none" stroke="white" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+    </svg>
+  </div>
+
+  <div class="auth-brand" style="position:relative;z-index:1">
+    <img src="/static/logo.png.webp" alt="IPUC" style="height:90px; width:auto; margin-bottom:8px;
+      filter:drop-shadow(0 4px 12px rgba(0,0,0,0.3));">
+    <h1 style="color:#ffffff; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">IPUC Adolescentes</h1>
+    <p style="color:rgba(255,255,255,0.75);">Iglesia Pentecostal Unida de Colombia</p>
+  </div>
+
+  <div class="auth-card" style="position:relative;z-index:1;backdrop-filter:blur(2px)">
+    <h2>Bienvenido de nuevo</h2>
+    <p class="auth-sub">Inicia sesión para continuar tu aprendizaje</p>
+    <form action="/login" method="POST">
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" name="email" placeholder="tu@correo.com" required autofocus>
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <div style="position:relative">
+          <input type="password" name="password" id="loginPass" placeholder="••••••••" required style="padding-right:40px">
+          <span onclick="togglePass('loginPass', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);display:flex;align-items:center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </span>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary btn-full">Entrar</button>
+    </form>
+    <p class="auth-link">¿No tienes cuenta? <a href="/registro">Regístrate gratis</a></p>
+  </div>
+
+  <div class="auth-verse" style="position:relative;z-index:1">
+    "Lámpara es a mis pies tu palabra, y lumbrera a mi camino"  Salmo 119:105
+  </div>
+</div>
+{% endblock %}
