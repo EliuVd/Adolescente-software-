@@ -1,176 +1,25 @@
 from flask import Flask, request, jsonify, render_template, redirect, session, flash
-import sqlite3, hashlib, os, uuid
-from datetime import datetime
+import hashlib, os, uuid
 from functools import wraps
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Cargar variables del archivo .env
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "adolescentes_app_clave_2024"
 
-DB = "ipuc.db"
-FOTOS_DIR = os.path.join("static", "fotos")
-
 # ══════════════════════════════════════════════
-# BASE DE DATOS
+# SUPABASE
 # ══════════════════════════════════════════════
-
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-def init_db():
-    conn = get_db()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id       TEXT PRIMARY KEY,
-            nombre   TEXT NOT NULL,
-            email    TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
-            rol      TEXT NOT NULL DEFAULT 'adolescente',
-            ciudad   TEXT,
-            activo   INTEGER DEFAULT 1,
-            fecha    TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS modulos (
-            id          TEXT PRIMARY KEY,
-            titulo      TEXT NOT NULL,
-            descripcion TEXT,
-            activo      INTEGER DEFAULT 1,
-            creado_por  TEXT,
-            fecha       TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS preguntas (
-            id          TEXT PRIMARY KEY,
-            modulo_id   TEXT NOT NULL REFERENCES modulos(id),
-            texto       TEXT NOT NULL,
-            opcion_a    TEXT NOT NULL,
-            opcion_b    TEXT NOT NULL,
-            opcion_c    TEXT NOT NULL,
-            opcion_d    TEXT NOT NULL,
-            correcta    TEXT NOT NULL,
-            explicacion TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS respuestas (
-            id         TEXT PRIMARY KEY,
-            usuario_id TEXT NOT NULL REFERENCES usuarios(id),
-            modulo_id  TEXT NOT NULL REFERENCES modulos(id),
-            puntaje    INTEGER NOT NULL,
-            total      INTEGER NOT NULL,
-            puntos     INTEGER NOT NULL DEFAULT 0,
-            detalle    TEXT,
-            fecha      TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS historial_intentos (
-            id         TEXT PRIMARY KEY,
-            usuario_id TEXT NOT NULL REFERENCES usuarios(id),
-            modulo_id  TEXT NOT NULL REFERENCES modulos(id),
-            puntaje    INTEGER NOT NULL,
-            fecha      TEXT DEFAULT (datetime('now'))
-        );
-    """)
-    conn.commit()
-
-    try:
-        conn.execute("ALTER TABLE respuestas ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE usuarios ADD COLUMN foto TEXT")
-        conn.commit()
-    except:
-        pass
-
-    try:
-        conn.executescript("""
-            INSERT INTO historial_intentos (id, usuario_id, modulo_id, puntaje, fecha)
-            SELECT id, usuario_id, modulo_id, puntaje, fecha FROM respuestas
-            WHERE id NOT IN (SELECT id FROM historial_intentos)
-        """)
-        conn.commit()
-    except:
-        pass
-
-    os.makedirs(FOTOS_DIR, exist_ok=True)
-
-    admin = conn.execute("SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1").fetchone()
-    if not admin:
-        conn.execute(
-            "INSERT INTO usuarios (id, nombre, email, password, rol, ciudad) VALUES (?,?,?,?,?,?)",
-            (str(uuid.uuid4()), "Administrador", "admin@ipuc.com",
-             hash_pw("admin1234"), "admin", "Colombia")
-        )
-        conn.commit()
-        print("Usuario Admin creado → email: admin@ipuc.com  |  contraseña: admin1234")
-
-    if not conn.execute("SELECT 1 FROM modulos LIMIT 1").fetchone():
-        _seed(conn)
-
-    conn.close()
-
-
-def _seed(conn):
-    m1 = str(uuid.uuid4())
-    m2 = str(uuid.uuid4())
-    m3 = str(uuid.uuid4())
-
-    conn.executemany("INSERT INTO modulos (id, titulo, descripcion) VALUES (?,?,?)", [
-        (m1, "Doctrina Apostólica",  "Fundamentos de la fe pentecostal unida"),
-        (m2, "Conocimiento Bíblico", "Historia, libros y personajes de la Biblia"),
-        (m3, "Vida Cristiana",       "Cómo vivir en santidad siendo joven hoy"),
-    ])
-
-    preguntas = [
-        (m1, "¿Cuál es el plan de salvación según Hechos 2:38?",
-         "Solo confesar a Jesús con la boca",
-         "Arrepentimiento, bautismo en el nombre de Jesús y recibir el Espíritu Santo",
-         "Bautismo de niño y Primera Comunión",
-         "Ir a la iglesia todos los domingos", "B",
-         "Pedro predicó el día de Pentecostés: arrepentirse, bautizarse y recibir el Espíritu Santo."),
-        (m1, "¿En qué nombre debe hacerse el bautismo según la IPUC?",
-         "Padre, Hijo y Espíritu Santo", "El nombre no importa",
-         "En el nombre de Jesucristo", "En el nombre de la iglesia", "C",
-         "En Hechos 2:38: 'Bautícese cada uno en el nombre de Jesucristo'."),
-        (m1, "¿Qué señal evidencia el bautismo del Espíritu Santo?",
-         "Sentir calor en las manos", "Hablar en otras lenguas",
-         "Llorar durante la adoración", "Ver visiones", "B",
-         "En Hechos 2:4 comenzaron a hablar en otras lenguas."),
-        (m2, "¿Cuántos libros tiene la Biblia?",
-         "60", "66", "72", "73", "B",
-         "66 libros: 39 del Antiguo y 27 del Nuevo Testamento."),
-        (m2, "¿Quién fue el primer rey de Israel?",
-         "David", "Salomón", "Saúl", "Moisés", "C",
-         "Saúl fue ungido por Samuel (1 Samuel 10)."),
-        (m2, "¿Cuántos evangelios hay en el Nuevo Testamento?",
-         "3", "4", "5", "6", "B",
-         "Mateo, Marcos, Lucas y Juan."),
-        (m3, "Según 1 Corintios 15:33, ¿qué hacen las malas compañías?",
-         "Nada si tu fe es fuerte", "Solo afectan a nuevos creyentes",
-         "Corrompen las buenas costumbres", "Nos hacen más fuertes", "C",
-         "'Las malas conversaciones corrompen las buenas costumbres.'"),
-        (m3, "¿A qué nos llama Jesús en Mateo 5:14?",
-         "Sal de la tierra", "Luz del mundo",
-         "Guerreros de Dios", "Siervos del Señor", "B",
-         "'Vosotros sois la luz del mundo.'"),
-    ]
-    for p in preguntas:
-        conn.execute("""
-            INSERT INTO preguntas
-            (id, modulo_id, texto, opcion_a, opcion_b, opcion_c, opcion_d, correcta, explicacion)
-            VALUES (?,?,?,?,?,?,?,?,?)
-        """, (str(uuid.uuid4()),) + p)
-    conn.commit()
-    print("Datos de ejemplo insertados.")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # ══════════════════════════════════════════════
-# HELPERS Y DECORADORES
+# HELPERS
 # ══════════════════════════════════════════════
 
 def hash_pw(pw):
@@ -189,18 +38,13 @@ def login_requerido(f):
     def dec(*args, **kwargs):
         if "usuario" not in session:
             return redirect("/login")
-        conn = get_db()
-        u = conn.execute(
-            "SELECT activo, rol, foto FROM usuarios WHERE id = ?",
-            (session["usuario"]["id"],)
-        ).fetchone()
-        conn.close()
-        if not u or not u["activo"]:
+        u = supabase.table("usuarios").select("activo, rol, foto").eq("id", session["usuario"]["id"]).single().execute()
+        if not u.data or not u.data["activo"]:
             session.clear()
             flash("Tu cuenta ha sido desactivada.", "error")
             return redirect("/login")
-        session["usuario"]["rol"] = u["rol"]
-        session["usuario"]["foto"] = u["foto"]
+        session["usuario"]["rol"]  = u.data["rol"]
+        session["usuario"]["foto"] = u.data.get("foto")
         return f(*args, **kwargs)
     return dec
 
@@ -248,7 +92,6 @@ def registro():
         if rol == "admin":
             flash("No puedes registrarte como administrador.", "error")
             return render_template("registro.html")
-
         if not nombre or not email or not password:
             flash("Completa todos los campos obligatorios.", "error")
             return render_template("registro.html")
@@ -256,18 +99,21 @@ def registro():
             flash("La contraseña debe tener al menos 6 caracteres.", "error")
             return render_template("registro.html")
 
-        conn = get_db()
-        if conn.execute("SELECT id FROM usuarios WHERE email = ?", (email,)).fetchone():
-            conn.close()
+        existe = supabase.table("usuarios").select("id").eq("email", email).execute()
+        if existe.data:
             flash("Ya existe una cuenta con ese correo.", "error")
             return render_template("registro.html")
 
-        conn.execute(
-            "INSERT INTO usuarios (id, nombre, email, password, rol, ciudad) VALUES (?,?,?,?,?,?)",
-            (str(uuid.uuid4()), nombre, email, hash_pw(password), rol, ciudad)
-        )
-        conn.commit()
-        conn.close()
+        supabase.table("usuarios").insert({
+            "id": str(uuid.uuid4()),
+            "nombre": nombre,
+            "email": email,
+            "password": hash_pw(password),
+            "rol": rol,
+            "ciudad": ciudad,
+            "activo": 1
+        }).execute()
+
         flash("Cuenta creada. Ahora inicia sesión.", "success")
         return redirect("/login")
 
@@ -280,18 +126,14 @@ def login():
         email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
-        conn = get_db()
-        u = conn.execute(
-            "SELECT * FROM usuarios WHERE email = ? AND password = ?",
-            (email, hash_pw(password))
-        ).fetchone()
-        conn.close()
+        res = supabase.table("usuarios").select("*").eq("email", email).eq("password", hash_pw(password)).execute()
 
-        if u:
+        if res.data:
+            u = res.data[0]
             if not u["activo"]:
                 flash("Tu cuenta está desactivada. Contacta al administrador.", "error")
                 return render_template("login.html")
-            session["usuario"] = dict(u)
+            session["usuario"] = u
             return redirigir_por_rol(u["rol"])
 
         flash("Correo o contraseña incorrectos.", "error")
@@ -306,38 +148,6 @@ def logout():
 
 
 # ══════════════════════════════════════════════
-# FOTO DE PERFIL
-# ══════════════════════════════════════════════
-
-@app.route("/perfil/foto", methods=["POST"])
-@login_requerido
-def subir_foto():
-    if "foto" not in request.files:
-        return jsonify({"ok": False, "error": "No se recibió imagen"})
-
-    archivo = request.files["foto"]
-    if not archivo.filename:
-        return jsonify({"ok": False, "error": "Archivo vacío"})
-
-    ext = archivo.filename.rsplit(".", 1)[-1].lower()
-    if ext not in ("jpg", "jpeg", "png", "webp", "gif", "jfif", "heic", "avif"):
-        return jsonify({"ok": False, "error": "Formato no permitido"})
-
-    nombre_archivo = f"{session['usuario']['id']}.{ext}"
-    ruta = os.path.join(FOTOS_DIR, nombre_archivo)
-    archivo.save(ruta)
-
-    conn = get_db()
-    conn.execute("UPDATE usuarios SET foto = ? WHERE id = ?",
-                 (nombre_archivo, session["usuario"]["id"]))
-    conn.commit()
-    conn.close()
-
-    session["usuario"]["foto"] = nombre_archivo
-    return jsonify({"ok": True, "foto": nombre_archivo})
-
-
-# ══════════════════════════════════════════════
 # VISTA ADOLESCENTE
 # ══════════════════════════════════════════════
 
@@ -347,67 +157,176 @@ def index():
     if session["usuario"]["rol"] != "adolescente":
         return redirigir_por_rol(session["usuario"]["rol"])
 
-    conn = get_db()
-    modulos = conn.execute("SELECT * FROM modulos WHERE activo = 1 ORDER BY fecha").fetchall()
+    modulos = supabase.table("modulos").select("*").eq("activo", 1).order("fecha").execute().data
     progreso = {}
     for m in modulos:
-        r = conn.execute(
-            "SELECT COUNT(*) as n, MAX(puntaje) as mejor FROM respuestas "
-            "WHERE usuario_id = ? AND modulo_id = ?",
-            (session["usuario"]["id"], m["id"])
-        ).fetchone()
-        progreso[m["id"]] = {"intentos": r["n"], "mejor": r["mejor"] or 0}
-    conn.close()
-    return render_template("index.html", usuario=session["usuario"],
-                           modulos=modulos, progreso=progreso)
+        r = supabase.table("respuestas").select("puntaje").eq("usuario_id", session["usuario"]["id"]).eq("modulo_id", m["id"]).execute().data
+        intentos = len(r)
+        mejor = max([x["puntaje"] for x in r], default=0)
+        progreso[m["id"]] = {"intentos": intentos, "mejor": mejor}
+
+    return render_template("index.html", usuario=session["usuario"], modulos=modulos, progreso=progreso)
 
 
 @app.route("/modulo/<modulo_id>")
 @login_requerido
 def ver_modulo(modulo_id):
-    conn = get_db()
-    modulo    = conn.execute("SELECT * FROM modulos WHERE id = ?", (modulo_id,)).fetchone()
-    preguntas = conn.execute(
-        "SELECT * FROM preguntas WHERE modulo_id = ? ORDER BY RANDOM() LIMIT 5",
-        (modulo_id,)
-    ).fetchall()
-    conn.close()
+    modulo = supabase.table("modulos").select("*").eq("id", modulo_id).single().execute().data
     if not modulo:
         return redirect("/")
-    return render_template("modulo.html", usuario=session["usuario"],
-                           modulo=modulo, preguntas=preguntas)
+    preguntas_all = supabase.table("preguntas").select("*").eq("modulo_id", modulo_id).execute().data
+    import random
+    preguntas = random.sample(preguntas_all, min(5, len(preguntas_all)))
+    return render_template("modulo.html", usuario=session["usuario"], modulo=modulo, preguntas=preguntas)
 
 
 @app.route("/mis-resultados")
 @login_requerido
 def mis_resultados():
-    conn = get_db()
+    historial_raw = supabase.table("respuestas").select("*, modulos(titulo)").eq("usuario_id", session["usuario"]["id"]).order("fecha", desc=True).execute().data
+    historial = []
+    for r in historial_raw:
+        historial.append({
+            "puntaje": r["puntaje"],
+            "total": r["total"],
+            "puntos": r["puntos"],
+            "fecha": r["fecha"],
+            "modulo_titulo": r["modulos"]["titulo"] if r.get("modulos") else ""
+        })
 
-    historial = conn.execute("""
-        SELECT r.puntaje, r.total, r.puntos, r.fecha, m.titulo as modulo_titulo
-        FROM respuestas r JOIN modulos m ON r.modulo_id = m.id
-        WHERE r.usuario_id = ? ORDER BY r.fecha DESC
-    """, (session["usuario"]["id"],)).fetchall()
+    # Ranking
+    todas_respuestas = supabase.table("respuestas").select("usuario_id, puntos").execute().data
+    usuarios_adol = supabase.table("usuarios").select("id, nombre, ciudad, foto").eq("rol", "adolescente").execute().data
 
-    tabla = [dict(r) for r in conn.execute("""
-        SELECT u.nombre, u.ciudad, u.foto, SUM(r.puntos) as total_puntos,
-               COUNT(r.id) as modulos_hechos
-        FROM respuestas r
-        JOIN usuarios u ON r.usuario_id = u.id
-        WHERE u.rol = 'adolescente'
-        GROUP BY u.id
-        ORDER BY total_puntos DESC
-    """).fetchall()]
+    tabla = []
+    for u in usuarios_adol:
+        puntos_u = [r["puntos"] for r in todas_respuestas if r["usuario_id"] == u["id"]]
+        tabla.append({
+            "nombre": u["nombre"],
+            "ciudad": u.get("ciudad"),
+            "foto": u.get("foto"),
+            "total_puntos": sum(puntos_u),
+            "modulos_hechos": len(puntos_u)
+        })
+    tabla.sort(key=lambda x: x["total_puntos"], reverse=True)
 
-    mis_puntos = conn.execute(
-        "SELECT SUM(puntos) as total FROM respuestas WHERE usuario_id = ?",
-        (session["usuario"]["id"],)
-    ).fetchone()
+    mis_puntos_raw = supabase.table("respuestas").select("puntos").eq("usuario_id", session["usuario"]["id"]).execute().data
+    mis_puntos = sum([r["puntos"] for r in mis_puntos_raw])
 
-    conn.close()
     return render_template("mis_resultados.html", usuario=session["usuario"],
-                           historial=historial, tabla=tabla,
-                           mis_puntos=mis_puntos["total"] or 0)
+                           historial=historial, tabla=tabla, mis_puntos=mis_puntos)
+
+
+# ══════════════════════════════════════════════
+# FORO
+# ══════════════════════════════════════════════
+
+@app.route("/foro")
+@login_requerido
+def foro():
+    posts_raw = supabase.table("foro_posts").select("*, usuarios(nombre, rol, foto)").order("fecha", desc=True).execute().data
+    posts = []
+    for p in posts_raw:
+        respuestas_count = supabase.table("foro_respuestas").select("id").eq("post_id", p["id"]).execute().data
+        posts.append({
+            "id": p["id"],
+            "titulo": p["titulo"],
+            "contenido": p["contenido"],
+            "fecha": p["fecha"],
+            "autor": p["usuarios"]["nombre"] if p.get("usuarios") else "",
+            "autor_rol": p["usuarios"]["rol"] if p.get("usuarios") else "",
+            "autor_foto": p["usuarios"]["foto"] if p.get("usuarios") else None,
+            "n_respuestas": len(respuestas_count)
+        })
+    return render_template("foro.html", usuario=session["usuario"], posts=posts)
+
+
+@app.route("/foro/<post_id>")
+@login_requerido
+def foro_post(post_id):
+    p = supabase.table("foro_posts").select("*, usuarios(nombre, rol, foto)").eq("id", post_id).single().execute().data
+    if not p:
+        return redirect("/foro")
+    post = {
+        "id": p["id"],
+        "titulo": p["titulo"],
+        "contenido": p["contenido"],
+        "fecha": p["fecha"],
+        "usuario_id": p["usuario_id"],
+        "autor": p["usuarios"]["nombre"] if p.get("usuarios") else "",
+        "autor_rol": p["usuarios"]["rol"] if p.get("usuarios") else "",
+        "autor_foto": p["usuarios"]["foto"] if p.get("usuarios") else None,
+    }
+    resp_raw = supabase.table("foro_respuestas").select("*, usuarios(nombre, rol, foto)").eq("post_id", post_id).order("fecha").execute().data
+    respuestas = []
+    for r in resp_raw:
+        respuestas.append({
+            "id": r["id"],
+            "contenido": r["contenido"],
+            "fecha": r["fecha"],
+            "usuario_id": r["usuario_id"],
+            "autor": r["usuarios"]["nombre"] if r.get("usuarios") else "",
+            "autor_rol": r["usuarios"]["rol"] if r.get("usuarios") else "",
+            "autor_foto": r["usuarios"]["foto"] if r.get("usuarios") else None,
+        })
+    return render_template("foro_post.html", usuario=session["usuario"], post=post, respuestas=respuestas)
+
+
+@app.route("/foro/nuevo", methods=["POST"])
+@login_requerido
+def foro_nuevo_post():
+    titulo    = request.form.get("titulo", "").strip()
+    contenido = request.form.get("contenido", "").strip()
+    if not titulo or not contenido:
+        flash("El título y el contenido son obligatorios.", "error")
+        return redirect("/foro")
+    pid = str(uuid.uuid4())
+    supabase.table("foro_posts").insert({
+        "id": pid,
+        "usuario_id": session["usuario"]["id"],
+        "titulo": titulo,
+        "contenido": contenido
+    }).execute()
+    return redirect(f"/foro/{pid}")
+
+
+@app.route("/foro/<post_id>/responder", methods=["POST"])
+@login_requerido
+def foro_responder(post_id):
+    contenido = request.form.get("contenido", "").strip()
+    if not contenido:
+        flash("La respuesta no puede estar vacía.", "error")
+        return redirect(f"/foro/{post_id}")
+    supabase.table("foro_respuestas").insert({
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "usuario_id": session["usuario"]["id"],
+        "contenido": contenido
+    }).execute()
+    return redirect(f"/foro/{post_id}")
+
+
+@app.route("/foro/eliminar/<post_id>", methods=["POST"])
+@login_requerido
+def foro_eliminar_post(post_id):
+    p = supabase.table("foro_posts").select("usuario_id").eq("id", post_id).single().execute().data
+    rol = session["usuario"]["rol"]
+    if p and (p["usuario_id"] == session["usuario"]["id"] or rol in ("admin", "maestro")):
+        supabase.table("foro_respuestas").delete().eq("post_id", post_id).execute()
+        supabase.table("foro_posts").delete().eq("id", post_id).execute()
+    return redirect("/foro")
+
+
+@app.route("/foro/eliminar-respuesta/<resp_id>", methods=["POST"])
+@login_requerido
+def foro_eliminar_respuesta(resp_id):
+    r = supabase.table("foro_respuestas").select("usuario_id, post_id").eq("id", resp_id).single().execute().data
+    rol = session["usuario"]["rol"]
+    if r and (r["usuario_id"] == session["usuario"]["id"] or rol in ("admin", "maestro")):
+        post_id = r["post_id"]
+        supabase.table("foro_respuestas").delete().eq("id", resp_id).execute()
+        return redirect(f"/foro/{post_id}")
+    return redirect("/foro")
 
 
 # ══════════════════════════════════════════════
@@ -418,20 +337,24 @@ def mis_resultados():
 @login_requerido
 @solo_maestro
 def maestro():
-    conn = get_db()
-    modulos = conn.execute("SELECT * FROM modulos WHERE activo = 1 ORDER BY fecha DESC").fetchall()
-    n_adol  = conn.execute("SELECT COUNT(*) FROM usuarios WHERE rol = 'adolescente'").fetchone()[0]
-    n_eval  = conn.execute("SELECT COUNT(*) FROM respuestas").fetchone()[0]
-    ranking = [dict(r) for r in conn.execute("""
-        SELECT u.nombre, u.ciudad, u.foto, COALESCE(SUM(r.puntos), 0) as total_puntos,
-               COUNT(r.id) as modulos_hechos
-        FROM usuarios u
-        LEFT JOIN respuestas r ON u.id = r.usuario_id
-        WHERE u.rol = 'adolescente'
-        GROUP BY u.id
-        ORDER BY total_puntos DESC
-    """).fetchall()]
-    conn.close()
+    modulos = supabase.table("modulos").select("*").eq("activo", 1).order("fecha", desc=True).execute().data
+    n_adol  = len(supabase.table("usuarios").select("id").eq("rol", "adolescente").execute().data)
+    n_eval  = len(supabase.table("respuestas").select("id").execute().data)
+
+    usuarios_adol = supabase.table("usuarios").select("id, nombre, ciudad, foto").eq("rol", "adolescente").execute().data
+    todas_respuestas = supabase.table("respuestas").select("usuario_id, puntos").execute().data
+    ranking = []
+    for u in usuarios_adol:
+        puntos_u = [r["puntos"] for r in todas_respuestas if r["usuario_id"] == u["id"]]
+        ranking.append({
+            "nombre": u["nombre"],
+            "ciudad": u.get("ciudad"),
+            "foto": u.get("foto"),
+            "total_puntos": sum(puntos_u),
+            "modulos_hechos": len(puntos_u)
+        })
+    ranking.sort(key=lambda x: x["total_puntos"], reverse=True)
+
     return render_template("maestro.html", usuario=session["usuario"],
                            modulos=modulos, n_adolescentes=n_adol, n_eval=n_eval, ranking=ranking)
 
@@ -444,40 +367,40 @@ def maestro():
 @login_requerido
 @solo_admin
 def admin():
-    conn = get_db()
-    usuarios = conn.execute("SELECT * FROM usuarios ORDER BY fecha DESC").fetchall()
-    modulos  = conn.execute("SELECT * FROM modulos ORDER BY fecha DESC").fetchall()
-    n_eval   = conn.execute("SELECT COUNT(*) FROM respuestas").fetchone()[0]
-    ranking  = [dict(r) for r in conn.execute("""
-        SELECT u.nombre, u.ciudad, u.foto, COALESCE(SUM(r.puntos), 0) as total_puntos,
-               COUNT(r.id) as modulos_hechos
-        FROM usuarios u
-        LEFT JOIN respuestas r ON u.id = r.usuario_id
-        WHERE u.rol = 'adolescente'
-        GROUP BY u.id
-        ORDER BY total_puntos DESC
-    """).fetchall()]
-    conn.close()
+    usuarios = supabase.table("usuarios").select("*").order("fecha", desc=True).execute().data
+    modulos  = supabase.table("modulos").select("*").order("fecha", desc=True).execute().data
+    n_eval   = len(supabase.table("respuestas").select("id").execute().data)
+
+    usuarios_adol = supabase.table("usuarios").select("id, nombre, ciudad, foto").eq("rol", "adolescente").execute().data
+    todas_respuestas = supabase.table("respuestas").select("usuario_id, puntos").execute().data
+    ranking = []
+    for u in usuarios_adol:
+        puntos_u = [r["puntos"] for r in todas_respuestas if r["usuario_id"] == u["id"]]
+        ranking.append({
+            "nombre": u["nombre"],
+            "ciudad": u.get("ciudad"),
+            "foto": u.get("foto"),
+            "total_puntos": sum(puntos_u),
+            "modulos_hechos": len(puntos_u)
+        })
+    ranking.sort(key=lambda x: x["total_puntos"], reverse=True)
+
     return render_template("admin.html", usuario=session["usuario"],
-                           usuarios=usuarios, modulos=modulos,
-                           n_eval=n_eval, ranking=ranking)
+                           usuarios=usuarios, modulos=modulos, n_eval=n_eval, ranking=ranking)
 
 
 @app.route("/admin/toggle-usuario/<uid>", methods=["POST"])
 @login_requerido
 @solo_admin
 def toggle_usuario(uid):
-    conn = get_db()
-    u = conn.execute("SELECT activo, rol FROM usuarios WHERE id = ?", (uid,)).fetchone()
+    u = supabase.table("usuarios").select("activo, rol").eq("id", uid).single().execute().data
     if u and u["rol"] != "admin":
         nuevo = 0 if u["activo"] else 1
-        conn.execute("UPDATE usuarios SET activo = ? WHERE id = ?", (nuevo, uid))
-        conn.commit()
+        supabase.table("usuarios").update({"activo": nuevo}).eq("id", uid).execute()
         if nuevo == 0:
-            flash("Usuario desactivado. Su sesión se cerrará en los próximos 5 segundos.", "success")
+            flash("Usuario desactivado.", "success")
         else:
             flash("Usuario activado correctamente.", "success")
-    conn.close()
     return redirect("/admin")
 
 
@@ -489,13 +412,10 @@ def cambiar_rol(uid):
     if nuevo_rol not in ("adolescente", "maestro"):
         flash("Rol no válido.", "error")
         return redirect("/admin")
-    conn = get_db()
-    u = conn.execute("SELECT rol FROM usuarios WHERE id = ?", (uid,)).fetchone()
+    u = supabase.table("usuarios").select("rol").eq("id", uid).single().execute().data
     if u and u["rol"] != "admin":
-        conn.execute("UPDATE usuarios SET rol = ? WHERE id = ?", (nuevo_rol, uid))
-        conn.commit()
-        flash("Rol actualizado. El panel cambiará en la próxima acción del usuario.", "success")
-    conn.close()
+        supabase.table("usuarios").update({"rol": nuevo_rol}).eq("id", uid).execute()
+        flash("Rol actualizado.", "success")
     return redirect("/admin")
 
 
@@ -507,14 +427,10 @@ def cambiar_password(uid):
     nueva = body.get("password", "")
     if len(nueva) < 6:
         return jsonify({"ok": False, "error": "Mínimo 6 caracteres"})
-    conn = get_db()
-    u = conn.execute("SELECT rol FROM usuarios WHERE id = ?", (uid,)).fetchone()
+    u = supabase.table("usuarios").select("rol").eq("id", uid).single().execute().data
     if u and u["rol"] != "admin":
-        conn.execute("UPDATE usuarios SET password = ? WHERE id = ?", (hash_pw(nueva), uid))
-        conn.commit()
-        conn.close()
+        supabase.table("usuarios").update({"password": hash_pw(nueva)}).eq("id", uid).execute()
         return jsonify({"ok": True})
-    conn.close()
     return jsonify({"ok": False, "error": "No permitido"})
 
 
@@ -522,14 +438,11 @@ def cambiar_password(uid):
 @login_requerido
 @solo_admin
 def admin_toggle_modulo(mid):
-    conn = get_db()
-    m = conn.execute("SELECT activo FROM modulos WHERE id = ?", (mid,)).fetchone()
+    m = supabase.table("modulos").select("activo").eq("id", mid).single().execute().data
     if m:
         nuevo = 0 if m["activo"] else 1
-        conn.execute("UPDATE modulos SET activo = ? WHERE id = ?", (nuevo, mid))
-        conn.commit()
+        supabase.table("modulos").update({"activo": nuevo}).eq("id", mid).execute()
         flash("Módulo actualizado.", "success")
-    conn.close()
     return redirect("/admin")
 
 
@@ -542,13 +455,13 @@ def admin_crear_modulo():
     if not titulo:
         flash("El título es obligatorio.", "error")
         return redirect("/admin")
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO modulos (id, titulo, descripcion, creado_por) VALUES (?,?,?,?)",
-        (str(uuid.uuid4()), titulo, descripcion, session["usuario"]["id"])
-    )
-    conn.commit()
-    conn.close()
+    supabase.table("modulos").insert({
+        "id": str(uuid.uuid4()),
+        "titulo": titulo,
+        "descripcion": descripcion,
+        "creado_por": session["usuario"]["id"],
+        "activo": 1
+    }).execute()
     flash("Módulo creado correctamente.", "success")
     return redirect("/admin")
 
@@ -561,26 +474,19 @@ def admin_crear_modulo():
 def check_session():
     if "usuario" not in session:
         return jsonify({"activo": False})
-    conn = get_db()
-    u = conn.execute(
-        "SELECT activo, rol, foto FROM usuarios WHERE id = ?",
-        (session["usuario"]["id"],)
-    ).fetchone()
-    conn.close()
+    u = supabase.table("usuarios").select("activo, rol, foto").eq("id", session["usuario"]["id"]).single().execute().data
     if not u or not u["activo"]:
         session.clear()
         return jsonify({"activo": False})
     session["usuario"]["rol"]  = u["rol"]
-    session["usuario"]["foto"] = u["foto"]
+    session["usuario"]["foto"] = u.get("foto")
     return jsonify({"activo": True, "rol": u["rol"]})
 
 
 @app.route("/api/modulos", methods=["GET"])
 @login_requerido
 def api_get_modulos():
-    conn = get_db()
-    data = [dict(m) for m in conn.execute("SELECT * FROM modulos WHERE activo = 1").fetchall()]
-    conn.close()
+    data = supabase.table("modulos").select("*").eq("activo", 1).execute().data
     return jsonify(data)
 
 
@@ -592,22 +498,28 @@ def api_crear_modulo():
     if not body.get("titulo"):
         return jsonify({"ok": False, "error": "El título es obligatorio"}), 400
 
-    conn = get_db()
-    mid  = str(uuid.uuid4())
-    conn.execute(
-        "INSERT INTO modulos (id, titulo, descripcion, creado_por) VALUES (?,?,?,?)",
-        (mid, body["titulo"], body.get("descripcion", ""), session["usuario"]["id"])
-    )
+    mid = str(uuid.uuid4())
+    supabase.table("modulos").insert({
+        "id": mid,
+        "titulo": body["titulo"],
+        "descripcion": body.get("descripcion", ""),
+        "creado_por": session["usuario"]["id"],
+        "activo": 1
+    }).execute()
+
     for p in body.get("preguntas", []):
-        conn.execute("""
-            INSERT INTO preguntas
-            (id, modulo_id, texto, opcion_a, opcion_b, opcion_c, opcion_d, correcta, explicacion)
-            VALUES (?,?,?,?,?,?,?,?,?)
-        """, (str(uuid.uuid4()), mid,
-              p["texto"], p["opcion_a"], p["opcion_b"], p["opcion_c"], p["opcion_d"],
-              p["correcta"].upper(), p.get("explicacion", "")))
-    conn.commit()
-    conn.close()
+        supabase.table("preguntas").insert({
+            "id": str(uuid.uuid4()),
+            "modulo_id": mid,
+            "texto": p["texto"],
+            "opcion_a": p["opcion_a"],
+            "opcion_b": p["opcion_b"],
+            "opcion_c": p["opcion_c"],
+            "opcion_d": p["opcion_d"],
+            "correcta": p["correcta"].upper(),
+            "explicacion": p.get("explicacion", "")
+        }).execute()
+
     return jsonify({"ok": True, "id": mid})
 
 
@@ -615,24 +527,16 @@ def api_crear_modulo():
 @login_requerido
 @solo_maestro
 def api_eliminar_modulo(modulo_id):
-    conn = get_db()
-    conn.execute("UPDATE modulos SET activo = 0 WHERE id = ?", (modulo_id,))
-    conn.commit()
-    conn.close()
+    supabase.table("modulos").update({"activo": 0}).eq("id", modulo_id).execute()
     return jsonify({"ok": True})
 
 
 @app.route("/api/preguntas/<modulo_id>")
 @login_requerido
 def api_preguntas(modulo_id):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT id, texto, opcion_a, opcion_b, opcion_c, opcion_d "
-        "FROM preguntas WHERE modulo_id = ? ORDER BY RANDOM() LIMIT 5",
-        (modulo_id,)
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    import random
+    rows = supabase.table("preguntas").select("id, texto, opcion_a, opcion_b, opcion_c, opcion_d").eq("modulo_id", modulo_id).execute().data
+    return jsonify(random.sample(rows, min(5, len(rows))))
 
 
 @app.route("/api/respuestas", methods=["POST"])
@@ -642,56 +546,55 @@ def api_respuestas():
     if not body.get("modulo_id") or not body.get("respuestas"):
         return jsonify({"ok": False, "error": "Datos incompletos"}), 400
 
-    conn      = get_db()
     resp_usr  = body["respuestas"]
     correctas = 0
     detalle   = []
 
     for pid, letra in resp_usr.items():
-        p = conn.execute(
-            "SELECT texto, correcta, explicacion FROM preguntas WHERE id = ?", (pid,)
-        ).fetchone()
+        p = supabase.table("preguntas").select("texto, correcta, explicacion").eq("id", pid).single().execute().data
         if not p:
             continue
         ok = letra.upper() == p["correcta"].upper()
         if ok:
             correctas += 1
         detalle.append({
-            "pregunta":     p["texto"],
+            "pregunta": p["texto"],
             "tu_respuesta": letra.upper(),
-            "correcta":     p["correcta"],
-            "ok":           ok,
-            "explicacion":  p["explicacion"] or ""
+            "correcta": p["correcta"],
+            "ok": ok,
+            "explicacion": p["explicacion"] or ""
         })
 
     total   = len(resp_usr)
     puntaje = round((correctas / total) * 100) if total else 0
     puntos  = calcular_puntos(puntaje)
 
-    conn.execute(
-        "INSERT INTO historial_intentos (id, usuario_id, modulo_id, puntaje) VALUES (?,?,?,?)",
-        (str(uuid.uuid4()), session["usuario"]["id"], body["modulo_id"], puntaje)
-    )
+    supabase.table("historial_intentos").insert({
+        "id": str(uuid.uuid4()),
+        "usuario_id": session["usuario"]["id"],
+        "modulo_id": body["modulo_id"],
+        "puntaje": puntaje
+    }).execute()
 
-    existente = conn.execute(
-        "SELECT id, puntos FROM respuestas WHERE usuario_id = ? AND modulo_id = ?",
-        (session["usuario"]["id"], body["modulo_id"])
-    ).fetchone()
+    existente = supabase.table("respuestas").select("id").eq("usuario_id", session["usuario"]["id"]).eq("modulo_id", body["modulo_id"]).execute().data
 
     if existente:
-        conn.execute(
-            "UPDATE respuestas SET puntaje = ?, total = ?, puntos = ?, detalle = ?, fecha = datetime('now') WHERE id = ?",
-            (puntaje, total, puntos, str(detalle), existente["id"])
-        )
+        supabase.table("respuestas").update({
+            "puntaje": puntaje,
+            "total": total,
+            "puntos": puntos,
+            "detalle": str(detalle)
+        }).eq("id", existente[0]["id"]).execute()
     else:
-        conn.execute(
-            "INSERT INTO respuestas (id, usuario_id, modulo_id, puntaje, total, puntos, detalle) VALUES (?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), session["usuario"]["id"],
-             body["modulo_id"], puntaje, total, puntos, str(detalle))
-        )
-
-    conn.commit()
-    conn.close()
+        supabase.table("respuestas").insert({
+            "id": str(uuid.uuid4()),
+            "usuario_id": session["usuario"]["id"],
+            "modulo_id": body["modulo_id"],
+            "puntaje": puntaje,
+            "total": total,
+            "puntos": puntos,
+            "detalle": str(detalle)
+        }).execute()
 
     return jsonify({"ok": True, "puntaje": puntaje, "puntos": puntos,
                     "correctas": correctas, "total": total, "detalle": detalle})
@@ -701,36 +604,31 @@ def api_respuestas():
 @login_requerido
 @solo_maestro
 def api_resultados():
-    conn = get_db()
-    rows = conn.execute("""
-        SELECT r.puntaje, r.total, r.puntos, r.fecha,
-               u.nombre AS estudiante, u.email, u.id AS usuario_id,
-               m.titulo AS modulo, m.id AS modulo_id
-        FROM respuestas r
-        JOIN usuarios u ON r.usuario_id = u.id
-        JOIN modulos m  ON r.modulo_id  = m.id
-        ORDER BY r.fecha DESC
-    """).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    rows = supabase.table("respuestas").select("*, usuarios(nombre, email, id), modulos(titulo, id)").order("fecha", desc=True).execute().data
+    result = []
+    for r in rows:
+        result.append({
+            "puntaje": r["puntaje"],
+            "total": r["total"],
+            "puntos": r["puntos"],
+            "fecha": r["fecha"],
+            "estudiante": r["usuarios"]["nombre"] if r.get("usuarios") else "",
+            "email": r["usuarios"]["email"] if r.get("usuarios") else "",
+            "usuario_id": r["usuarios"]["id"] if r.get("usuarios") else "",
+            "modulo": r["modulos"]["titulo"] if r.get("modulos") else "",
+            "modulo_id": r["modulos"]["id"] if r.get("modulos") else "",
+        })
+    return jsonify(result)
 
 
 @app.route("/api/intentos/<usuario_id>/<modulo_id>")
 @login_requerido
 @solo_maestro
 def api_intentos(usuario_id, modulo_id):
-    conn = get_db()
-    rows = conn.execute("""
-        SELECT puntaje, fecha
-        FROM historial_intentos
-        WHERE usuario_id = ? AND modulo_id = ?
-        ORDER BY fecha DESC
-    """, (usuario_id, modulo_id)).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    rows = supabase.table("historial_intentos").select("puntaje, fecha").eq("usuario_id", usuario_id).eq("modulo_id", modulo_id).order("fecha", desc=True).execute().data
+    return jsonify(rows)
 
 
 # ══════════════════════════════════════════════
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, host='0.0.0.0')
