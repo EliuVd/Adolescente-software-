@@ -7,11 +7,53 @@
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      padding: 6px;
+      background: none;
+      border: none;
+    }
+    .hamburger span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: #fff;
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+    .mobile-menu {
+      display: none;
+      flex-direction: column;
+      background: var(--navy);
+      padding: 12px 20px 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .mobile-menu a {
+      color: rgba(255,255,255,0.8);
+      text-decoration: none;
+      padding: 12px 0;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .mobile-menu a:last-child { border-bottom: none; }
+    .mobile-menu a.active { color: var(--gold-lt); }
+    .mobile-menu.open { display: flex; }
+    @media (max-width: 700px) {
+      .nav-links { display: none !important; }
+      .hamburger { display: flex; }
+      .user-name { display: none; }
+    }
+  </style>
 </head>
 <body>
 
 {% if session.usuario %}
-<nav class="navbar">
+<nav class="navbar" style="flex-wrap:wrap;padding:0 16px;">
   <a href="/" class="nav-logo">
     <img src="/static/logo.png.webp" alt="IPUC" style="height:38px; width:auto;">
     <span>IPUC Adolescentes</span>
@@ -25,10 +67,9 @@
     {% elif session.usuario.rol == 'admin' %}
       <a href="/admin" class="{% if '/admin' in request.path %}active{% endif %}">Panel Admin</a>
     {% endif %}
-    
     <a href="/foro" class="{% if '/foro' in request.path %}active{% endif %}">Foro</a>
   </div>
-  <div class="nav-user">
+  <div class="nav-user" style="display:flex;align-items:center;gap:10px;">
     <div class="user-avatar" onclick="abrirModalFoto()" title="Cambiar foto de perfil" style="cursor:pointer;overflow:hidden;padding:0;">
       {% if session.usuario.foto %}
         <img src="/static/fotos/{{ session.usuario.foto }}" alt="Foto" style="width:100%;height:100%;object-fit:cover;">
@@ -38,8 +79,28 @@
     </div>
     <span class="user-name">{{ session.usuario.nombre.split()[0] }}</span>
     <a href="/logout" class="btn-logout">Salir</a>
+    <!-- Botón hamburguesa -->
+    <button class="hamburger" onclick="toggleMenu()" aria-label="Menú">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
   </div>
 </nav>
+
+<!-- Menú móvil desplegable -->
+<div class="mobile-menu" id="mobile-menu">
+  {% if session.usuario.rol == 'adolescente' %}
+    <a href="/" class="{% if request.path == '/' %}active{% endif %}">Inicio</a>
+    <a href="/mis-resultados" class="{% if '/mis-resultados' in request.path %}active{% endif %}">Mis resultados</a>
+  {% elif session.usuario.rol == 'maestro' %}
+    <a href="/maestro" class="{% if '/maestro' in request.path %}active{% endif %}">Panel Maestro</a>
+  {% elif session.usuario.rol == 'admin' %}
+    <a href="/admin" class="{% if '/admin' in request.path %}active{% endif %}">Panel Admin</a>
+  {% endif %}
+  <a href="/foro" class="{% if '/foro' in request.path %}active{% endif %}">Foro</a>
+  <a href="/logout" style="color:rgba(255,100,100,0.8)">Salir</a>
+</div>
 {% endif %}
 
 <main class="main-content {% if not session.usuario %}auth-page{% endif %}">
@@ -65,7 +126,6 @@
       <h3 style="margin:0;font-size:1rem;color:var(--navy)">Foto de perfil</h3>
       <button onclick="cerrarModalFoto()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:#aaa">×</button>
     </div>
-
     <div style="text-align:center;margin-bottom:20px">
       <div id="foto-preview" style="
         width:90px;height:90px;border-radius:50%;
@@ -81,7 +141,6 @@
       </div>
       <p style="font-size:0.82rem;color:#888;margin:0">Haz clic para seleccionar una imagen</p>
     </div>
-
     <input type="file" id="foto-input" accept="image/*" style="display:none" onchange="previewFoto(this)">
     <button onclick="document.getElementById('foto-input').click()" class="btn-outline" style="width:100%;margin-bottom:12px">
       Seleccionar imagen
@@ -115,10 +174,7 @@ function previewFoto(input) {
 }
 async function subirFoto() {
   const input = document.getElementById('foto-input');
-  if (!input.files || !input.files[0]) {
-    alert('Selecciona una imagen primero.');
-    return;
-  }
+  if (!input.files || !input.files[0]) { alert('Selecciona una imagen primero.'); return; }
   const formData = new FormData();
   formData.append('foto', input.files[0]);
   try {
@@ -127,15 +183,28 @@ async function subirFoto() {
     const d = await res.json();
     if (d.ok) { cerrarModalFoto(); location.reload(); }
     else alert('Error: ' + (d.error || 'Intenta de nuevo'));
-  } catch(e) {
-    alert('Error de red: ' + e);
-  }
+  } catch(e) { alert('Error de red: ' + e); }
 }
 document.getElementById('modal-foto').addEventListener('click', function(e) {
   if (e.target === this) cerrarModalFoto();
 });
 </script>
 {% endif %}
+
+<script>
+function toggleMenu() {
+  const menu = document.getElementById('mobile-menu');
+  menu.classList.toggle('open');
+}
+// Cerrar menú al hacer clic fuera
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('mobile-menu');
+  const btn   = document.querySelector('.hamburger');
+  if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+    menu.classList.remove('open');
+  }
+});
+</script>
 
 <script src="/static/js/main.js"></script>
 
