@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 {% block title %}Panel Admin — IPUC Adolescentes{% endblock %}
 {% block content %}
@@ -93,6 +94,15 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<!-- Resultados de adolescentes -->
+<div class="panel-card" style="margin-bottom:24px;position:relative">
+  <h3>Resultados de Adolescentes</h3>
+  <p style="font-size:0.8rem;color:var(--muted);margin-bottom:14px">
+    Haz clic en un joven para ver sus módulos e intentos.
+  </p>
+  <div id="listaAdolescentes"><p style="color:var(--muted);font-size:0.9rem">Cargando...</p></div>
 </div>
 
 <!-- Tabla de posiciones -->
@@ -223,11 +233,8 @@
     width:100%; max-width:380px; box-shadow:0 8px 40px rgba(0,0,0,0.25);
     animation: fadeUp 0.2s ease;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-      <div style="
-        width:42px;height:42px;border-radius:50%;
-        background:var(--navy);display:flex;align-items:center;justify-content:center;">
-        <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2"
-          viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <div style="width:42px;height:42px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;">
+        <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       </div>
       <div>
         <h3 style="margin:0;font-size:1rem">Cambiar contraseña</h3>
@@ -247,6 +254,26 @@
   </div>
 </div>
 
+<!-- Panel lateral intentos -->
+<div id="panel-intentos" style="
+  display:none; position:fixed; top:0; right:0; bottom:0; width:340px;
+  background:var(--card); box-shadow:-4px 0 24px rgba(0,0,0,0.15);
+  z-index:500; padding:28px 24px; overflow-y:auto;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  transform: translateX(100%); opacity:0;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <h3 style="margin:0" id="intentos-titulo">Módulos</h3>
+    <button onclick="cerrarIntentos()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:var(--muted);line-height:1;">×</button>
+  </div>
+  <div id="intentos-joven" style="font-size:0.85rem;color:var(--muted);margin-bottom:20px"></div>
+  <div id="intentos-lista"></div>
+</div>
+
+<div id="panel-overlay" onclick="cerrarIntentos()" style="
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.2); z-index:499;">
+</div>
+
 <style>
 @keyframes fadeUp {
   from { opacity:0; transform:translateY(16px); }
@@ -256,6 +283,11 @@
   from { opacity:0; transform:translateY(12px); }
   to   { opacity:1; transform:translateY(0); }
 }
+@keyframes slideIn {
+  from { opacity:0; transform:translateY(-8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.modulo-card { animation: slideIn 0.25s ease forwards; opacity:0; }
 </style>
 
 <script>
@@ -313,6 +345,132 @@ async function confirmarPassword() {
 document.getElementById('modal-password').addEventListener('click', function(e) {
   if (e.target === this) cerrarModal();
 });
+
+// Cargar lista de adolescentes
+async function cargarAdolescentes() {
+  const cont = document.getElementById('listaAdolescentes');
+  try {
+    const res  = await fetch('/api/resultados');
+    const data = await res.json();
+    if (!data.length) {
+      cont.innerHTML = '<p style="color:var(--muted);font-size:0.9rem">Aún no hay evaluaciones.</p>';
+      return;
+    }
+    const porAdolescente = {};
+    data.forEach(r => {
+      if (!porAdolescente[r.usuario_id]) {
+        porAdolescente[r.usuario_id] = { nombre: r.estudiante, id: r.usuario_id, modulos: [] };
+      }
+      porAdolescente[r.usuario_id].modulos.push(r);
+    });
+    let html = '';
+    Object.values(porAdolescente).forEach(adol => {
+      html += `
+        <div class="adol-row" onclick="verModulosAdolescente('${adol.id}', '${adol.nombre}')"
+          style="display:flex;align-items:center;justify-content:space-between;
+                 padding:12px 0;border-bottom:1px solid var(--border-lt);cursor:pointer;">
+          <div>
+            <div style="font-weight:600;color:var(--text)">${adol.nombre}</div>
+            <div style="font-size:0.78rem;color:var(--muted)">${adol.modulos.length} módulo${adol.modulos.length !== 1 ? 's' : ''} evaluado${adol.modulos.length !== 1 ? 's' : ''}</div>
+          </div>
+          <span style="color:var(--muted);font-size:0.8rem">Ver módulos →</span>
+        </div>`;
+    });
+    cont.innerHTML = html;
+  } catch(e) {
+    cont.innerHTML = '<p style="color:var(--muted)">Error cargando datos.</p>';
+  }
+}
+
+async function verModulosAdolescente(usuarioId, nombre) {
+  document.getElementById('intentos-titulo').textContent = nombre;
+  document.getElementById('intentos-joven').textContent = 'Módulos evaluados';
+  document.getElementById('intentos-lista').innerHTML = '<p style="color:var(--muted)">Cargando...</p>';
+  const panel = document.getElementById('panel-intentos');
+  panel.style.display = 'block';
+  setTimeout(() => { panel.style.transform = 'translateX(0)'; panel.style.opacity = '1'; }, 10);
+  document.getElementById('panel-overlay').style.display = 'block';
+
+  try {
+    const res  = await fetch('/api/resultados');
+    const data = await res.json();
+    const modulos = data.filter(r => r.usuario_id === usuarioId);
+    if (!modulos.length) {
+      document.getElementById('intentos-lista').innerHTML = '<p style="color:var(--muted);font-size:0.9rem">Sin módulos evaluados.</p>';
+      return;
+    }
+    let html = '';
+    modulos.forEach(m => {
+      const color = m.puntaje >= 80 ? 'var(--green)' : m.puntaje >= 60 ? '#D97706' : 'var(--red)';
+      html += `
+        <div class="modulo-card" style="border:1px solid var(--border-lt);border-radius:10px;margin-bottom:10px;overflow:hidden;animation-delay:${modulos.indexOf(m) * 0.08}s">
+          <div onclick="toggleIntentos('intentos-${m.modulo_id}', this)"
+            style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:var(--bg);">
+            <div>
+              <div style="font-weight:600;font-size:0.9rem;color:var(--text)">${m.modulo}</div>
+              <div style="font-size:0.75rem;color:var(--muted)">${m.fecha.substring(0,10)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:800;font-size:1.1rem;color:${color}">${m.puntaje}%</span>
+              <span class="toggle-arrow" style="color:var(--muted);font-size:0.8rem;transition:transform 0.2s">▼</span>
+            </div>
+          </div>
+          <div id="intentos-${m.modulo_id}" style="display:none;padding:0 16px 14px;">
+            <p style="color:var(--muted);font-size:0.8rem">Cargando intentos...</p>
+          </div>
+        </div>`;
+    });
+    document.getElementById('intentos-lista').innerHTML = html;
+    modulos.forEach(m => cargarIntentosModulo(usuarioId, m.modulo_id));
+  } catch(e) {
+    document.getElementById('intentos-lista').innerHTML = '<p style="color:var(--muted)">Error cargando módulos.</p>';
+  }
+}
+
+async function cargarIntentosModulo(usuarioId, moduloId) {
+  try {
+    const res  = await fetch(`/api/intentos/${usuarioId}/${moduloId}`);
+    const data = await res.json();
+    const cont = document.getElementById(`intentos-${moduloId}`);
+    if (!cont) return;
+    if (!data.length) {
+      cont.innerHTML = '<p style="color:var(--muted);font-size:0.8rem">Sin intentos registrados.</p>';
+      return;
+    }
+    let html = '';
+    data.forEach((intento, i) => {
+      const color = intento.puntaje >= 80 ? 'var(--green)' : intento.puntaje >= 60 ? '#D97706' : 'var(--red)';
+      html += `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-lt);">
+          <div>
+            <div style="font-size:0.82rem;font-weight:600;color:var(--text)">Intento ${data.length - i}</div>
+            <div style="font-size:0.75rem;color:var(--muted)">${intento.fecha.substring(0,16)}</div>
+          </div>
+          <span style="font-weight:800;font-size:1.1rem;color:${color}">${intento.puntaje}%</span>
+        </div>`;
+    });
+    html += `<div style="margin-top:8px;font-size:0.75rem;color:var(--muted);text-align:center">${data.length} intento${data.length !== 1 ? 's' : ''} en total</div>`;
+    cont.innerHTML = html;
+  } catch(e) {}
+}
+
+function toggleIntentos(id, header) {
+  const cont  = document.getElementById(id);
+  const arrow = header.querySelector('.toggle-arrow');
+  const abierto = cont.style.display !== 'none';
+  cont.style.display  = abierto ? 'none' : 'block';
+  arrow.style.transform = abierto ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
+function cerrarIntentos() {
+  const panel = document.getElementById('panel-intentos');
+  panel.style.transform = 'translateX(100%)';
+  panel.style.opacity = '0';
+  setTimeout(() => { panel.style.display = 'none'; }, 300);
+  document.getElementById('panel-overlay').style.display = 'none';
+}
+
+cargarAdolescentes();
 </script>
 
 {% endblock %}

@@ -96,12 +96,13 @@
 <body>
 
 {% if session.usuario %}
-<nav class="navbar" style="flex-wrap:nowrap;padding:0 16px;align-items:center;">
+<nav class="navbar" style="flex-wrap:nowrap;padding:0 16px;align-items:center;display:flex;position:relative;">
   <a href="/" class="nav-logo">
     <img src="/static/logo.png.webp" alt="IPUC" style="height:38px; width:auto;">
     <span>IPUC Adolescentes</span>
   </a>
-  <div class="nav-links">
+  
+  <div class="nav-links" style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 8px;">
     {% if session.usuario.rol == 'adolescente' %}
       <a href="/" class="{% if request.path == '/' %}active{% endif %}">Inicio</a>
       <a href="/mis-resultados" class="{% if '/mis-resultados' in request.path %}active{% endif %}">Mis resultados</a>
@@ -112,6 +113,7 @@
     {% endif %}
     <a href="/foro" class="{% if '/foro' in request.path %}active{% endif %}">Foro</a>
   </div>
+
   <div class="nav-user" style="display:flex;align-items:center;gap:10px;margin-left:auto">
     <div class="user-avatar" onclick="abrirModalFoto()" title="Cambiar foto de perfil" style="cursor:pointer;overflow:hidden;padding:0;">
       {% if session.usuario.foto %}
@@ -130,7 +132,6 @@
   </div>
 </nav>
 
-<!-- Menú móvil desplegable -->
 <div class="mobile-menu" id="mobile-menu">
   {% if session.usuario.rol == 'adolescente' %}
     <a href="/" class="{% if request.path == '/' %}active{% endif %}">Inicio</a>
