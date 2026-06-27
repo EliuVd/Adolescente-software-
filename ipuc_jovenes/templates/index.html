@@ -34,6 +34,29 @@
   </div>
 </div>
 
+<!-- Acceso rápido al foro -->
+<a href="/foro" style="text-decoration:none;display:block;margin-bottom:24px">
+  <div style="background:linear-gradient(135deg,var(--navy) 0%,var(--navy-lt) 100%);
+    border-radius:var(--radius);padding:18px 24px;display:flex;align-items:center;
+    justify-content:space-between;box-shadow:var(--shadow-md);
+    transition:transform 0.2s" onmouseover="this.style.transform='translateY(-2px)'"
+    onmouseout="this.style.transform=''">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:10px;
+        display:flex;align-items:center;justify-content:center;">
+        <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <div>
+        <div style="color:#fff;font-weight:700;font-size:0.95rem">Foro de discusión</div>
+        <div style="color:rgba(255,255,255,0.65);font-size:0.8rem">Haz preguntas y comparte ideas</div>
+      </div>
+    </div>
+    <span style="color:rgba(255,255,255,0.7);font-size:0.85rem">Ir al foro →</span>
+  </div>
+</a>
+
 <div class="section-title">Módulos de estudio</div>
 <div class="modules-grid">
   {% for m in modulos %}

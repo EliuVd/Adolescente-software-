@@ -233,6 +233,8 @@ def foro():
             "titulo": p["titulo"],
             "contenido": p["contenido"],
             "fecha": p["fecha"],
+            "categoria": p.get("categoria", "general"),
+            "fijado": p.get("fijado", False),
             "autor": p["usuarios"]["nombre"] if p.get("usuarios") else "",
             "autor_rol": p["usuarios"]["rol"] if p.get("usuarios") else "",
             "autor_foto": p["usuarios"]["foto"] if p.get("usuarios") else None,
@@ -241,42 +243,15 @@ def foro():
     return render_template("foro.html", usuario=session["usuario"], posts=posts)
 
 
-@app.route("/foro/<post_id>")
-@login_requerido
-def foro_post(post_id):
-    p = supabase.table("foro_posts").select("*, usuarios(nombre, rol, foto)").eq("id", post_id).single().execute().data
-    if not p:
-        return redirect("/foro")
-    post = {
-        "id": p["id"],
-        "titulo": p["titulo"],
-        "contenido": p["contenido"],
-        "fecha": p["fecha"],
-        "usuario_id": p["usuario_id"],
-        "autor": p["usuarios"]["nombre"] if p.get("usuarios") else "",
-        "autor_rol": p["usuarios"]["rol"] if p.get("usuarios") else "",
-        "autor_foto": p["usuarios"]["foto"] if p.get("usuarios") else None,
-    }
-    resp_raw = supabase.table("foro_respuestas").select("*, usuarios(nombre, rol, foto)").eq("post_id", post_id).order("fecha").execute().data
-    respuestas = []
-    for r in resp_raw:
-        respuestas.append({
-            "id": r["id"],
-            "contenido": r["contenido"],
-            "fecha": r["fecha"],
-            "usuario_id": r["usuario_id"],
-            "autor": r["usuarios"]["nombre"] if r.get("usuarios") else "",
-            "autor_rol": r["usuarios"]["rol"] if r.get("usuarios") else "",
-            "autor_foto": r["usuarios"]["foto"] if r.get("usuarios") else None,
-        })
-    return render_template("foro_post.html", usuario=session["usuario"], post=post, respuestas=respuestas)
-
-
 @app.route("/foro/nuevo", methods=["POST"])
 @login_requerido
 def foro_nuevo_post():
     titulo    = request.form.get("titulo", "").strip()
     contenido = request.form.get("contenido", "").strip()
+    categoria = request.form.get("categoria", "general")
+    rol = session["usuario"]["rol"]
+    if categoria == "anuncio" and rol not in ("maestro", "admin"):
+        categoria = "general"
     if not titulo or not contenido:
         flash("El título y el contenido son obligatorios.", "error")
         return redirect("/foro")
@@ -285,26 +260,23 @@ def foro_nuevo_post():
         "id": pid,
         "usuario_id": session["usuario"]["id"],
         "titulo": titulo,
-        "contenido": contenido
+        "contenido": contenido,
+        "categoria": categoria
     }).execute()
     return redirect(f"/foro/{pid}")
 
-
-@app.route("/foro/<post_id>/responder", methods=["POST"])
+@app.route("/foro/fijar/<post_id>", methods=["POST"])
 @login_requerido
-def foro_responder(post_id):
-    contenido = request.form.get("contenido", "").strip()
-    if not contenido:
-        flash("La respuesta no puede estar vacía.", "error")
-        return redirect(f"/foro/{post_id}")
-    supabase.table("foro_respuestas").insert({
-        "id": str(uuid.uuid4()),
-        "post_id": post_id,
-        "usuario_id": session["usuario"]["id"],
-        "contenido": contenido
-    }).execute()
+def foro_fijar(post_id):
+    rol = session["usuario"]["rol"]
+    if rol not in ("maestro", "admin"):
+        return redirect("/foro")
+    p = supabase.table("foro_posts").select("fijado").eq("id", post_id).single().execute().data
+    if p:
+        nuevo_fijado = not bool(p["fijado"])
+        supabase.table("foro_posts").update({"fijado": nuevo_fijado}).eq("id", post_id).execute()
     return redirect(f"/foro/{post_id}")
-
+    
 
 @app.route("/foro/eliminar/<post_id>", methods=["POST"])
 @login_requerido
@@ -328,6 +300,78 @@ def foro_eliminar_respuesta(resp_id):
         return redirect(f"/foro/{post_id}")
     return redirect("/foro")
 
+
+@app.route("/foro/like/<post_id>", methods=["POST"])
+@login_requerido
+def foro_like(post_id):
+    tipo = request.form.get("tipo", "👍")
+    uid  = session["usuario"]["id"]
+    existente = supabase.table("foro_likes").select("id").eq("post_id", post_id).eq("usuario_id", uid).execute().data
+    if existente:
+        supabase.table("foro_likes").delete().eq("id", existente[0]["id"]).execute()
+    else:
+        supabase.table("foro_likes").insert({
+            "id": str(uuid.uuid4()),
+            "post_id": post_id,
+            "usuario_id": uid,
+            "tipo": tipo
+        }).execute()
+    return redirect(f"/foro/{post_id}")
+
+
+@app.route("/foro/<post_id>/responder", methods=["POST"])
+@login_requerido
+def foro_responder(post_id):
+    contenido = request.form.get("contenido", "").strip()
+    if not contenido:
+        flash("La respuesta no puede estar vacía.", "error")
+        return redirect(f"/foro/{post_id}")
+    supabase.table("foro_respuestas").insert({
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "usuario_id": session["usuario"]["id"],
+        "contenido": contenido
+    }).execute()
+    return redirect(f"/foro/{post_id}")
+
+
+@app.route("/foro/<post_id>")
+@login_requerido
+def foro_post(post_id):
+    p = supabase.table("foro_posts").select("*, usuarios(nombre, rol, foto)").eq("id", post_id).single().execute().data
+    if not p:
+        return redirect("/foro")
+    post = {
+        "id": p["id"],
+        "titulo": p["titulo"],
+        "contenido": p["contenido"],
+        "fecha": p["fecha"],
+        "usuario_id": p["usuario_id"],
+        "fijado": bool(p.get("fijado") or False),
+        "categoria": p.get("categoria", "general"),
+        "autor": p["usuarios"]["nombre"] if p.get("usuarios") else "",
+        "autor_rol": p["usuarios"]["rol"] if p.get("usuarios") else "",
+        "autor_foto": p["usuarios"]["foto"] if p.get("usuarios") else None,
+    }
+    resp_raw = supabase.table("foro_respuestas").select("*, usuarios(nombre, rol, foto)").eq("post_id", post_id).order("fecha").execute().data
+    respuestas = []
+    for r in resp_raw:
+        respuestas.append({
+            "id": r["id"],
+            "contenido": r["contenido"],
+            "fecha": r["fecha"],
+            "usuario_id": r["usuario_id"],
+            "autor": r["usuarios"]["nombre"] if r.get("usuarios") else "",
+            "autor_rol": r["usuarios"]["rol"] if r.get("usuarios") else "",
+            "autor_foto": r["usuarios"]["foto"] if r.get("usuarios") else None,
+        })
+    likes_raw = supabase.table("foro_likes").select("usuario_id, tipo").eq("post_id", post_id).execute().data
+    n_likes = len(likes_raw)
+    yo_di_like = any(l["usuario_id"] == session["usuario"]["id"] for l in likes_raw)
+
+    return render_template("foro_post.html", usuario=session["usuario"],
+                           post=post, respuestas=respuestas,
+                           n_likes=n_likes, yo_di_like=yo_di_like)
 
 # ══════════════════════════════════════════════
 # VISTA MAESTRO

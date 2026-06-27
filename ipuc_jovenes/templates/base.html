@@ -25,6 +25,8 @@
     {% elif session.usuario.rol == 'admin' %}
       <a href="/admin" class="{% if '/admin' in request.path %}active{% endif %}">Panel Admin</a>
     {% endif %}
+    
+    <a href="/foro" class="{% if '/foro' in request.path %}active{% endif %}">Foro</a>
   </div>
   <div class="nav-user">
     <div class="user-avatar" onclick="abrirModalFoto()" title="Cambiar foto de perfil" style="cursor:pointer;overflow:hidden;padding:0;">
@@ -51,7 +53,6 @@
   {% block content %}{% endblock %}
 </main>
 
-<!-- Modal foto de perfil -->
 {% if session.usuario %}
 <div id="modal-foto" style="
   display:none; position:fixed; inset:0; z-index:2000;
@@ -65,7 +66,6 @@
       <button onclick="cerrarModalFoto()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:#aaa">×</button>
     </div>
 
-    <!-- Preview -->
     <div style="text-align:center;margin-bottom:20px">
       <div id="foto-preview" style="
         width:90px;height:90px;border-radius:50%;
