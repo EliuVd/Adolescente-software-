@@ -47,13 +47,17 @@
       .nav-links { display: none !important; }
       .hamburger { display: flex; }
       .user-name { display: none; }
+      .btn-logout { display: none; }
+    }
+    @media (min-width: 701px) {
+      .hamburger { display: none !important; }
     }
   </style>
 </head>
 <body>
 
 {% if session.usuario %}
-<nav class="navbar" style="flex-wrap:wrap;padding:0 16px;">
+<nav class="navbar" style="flex-wrap:nowrap;padding:0 16px;align-items:center;">
   <a href="/" class="nav-logo">
     <img src="/static/logo.png.webp" alt="IPUC" style="height:38px; width:auto;">
     <span>IPUC Adolescentes</span>
@@ -69,7 +73,7 @@
     {% endif %}
     <a href="/foro" class="{% if '/foro' in request.path %}active{% endif %}">Foro</a>
   </div>
-  <div class="nav-user" style="display:flex;align-items:center;gap:10px;">
+  <div class="nav-user" style="display:flex;align-items:center;gap:10px;margin-left:auto">
     <div class="user-avatar" onclick="abrirModalFoto()" title="Cambiar foto de perfil" style="cursor:pointer;overflow:hidden;padding:0;">
       {% if session.usuario.foto %}
         <img src="/static/fotos/{{ session.usuario.foto }}" alt="Foto" style="width:100%;height:100%;object-fit:cover;">
@@ -79,7 +83,6 @@
     </div>
     <span class="user-name">{{ session.usuario.nombre.split()[0] }}</span>
     <a href="/logout" class="btn-logout">Salir</a>
-    <!-- Botón hamburguesa -->
     <button class="hamburger" onclick="toggleMenu()" aria-label="Menú">
       <span></span>
       <span></span>
@@ -196,7 +199,6 @@ function toggleMenu() {
   const menu = document.getElementById('mobile-menu');
   menu.classList.toggle('open');
 }
-// Cerrar menú al hacer clic fuera
 document.addEventListener('click', function(e) {
   const menu = document.getElementById('mobile-menu');
   const btn   = document.querySelector('.hamburger');
